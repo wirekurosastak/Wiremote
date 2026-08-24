@@ -249,7 +249,6 @@ if (projSelect) {
     projSelect.addEventListener("change", (e) => {
         if (e.target.value) {
             command("display_switch", { mode: e.target.value });
-            e.target.value = ""; // Reset after selection
         }
     });
 }
@@ -555,13 +554,30 @@ function renderSessions(sessions) {
 
 let brightnessDragging = false;
 function renderBrightness(data) {
-    if (!data.supported) { 
-        if (UI.brightnessContainer) UI.brightnessContainer.style.display = "none";
-        if (UI.brightnessDivider) UI.brightnessDivider.style.display = "none";
-        return; 
-    }
     if (UI.brightnessContainer) UI.brightnessContainer.style.display = "flex";
     if (UI.brightnessDivider) UI.brightnessDivider.style.display = "block";
+    
+    if (!data.supported) { 
+        if (UI.brightnessSlider) {
+            UI.brightnessSlider.value = 100;
+            UI.brightnessSlider.disabled = true;
+        }
+        if (UI.brightnessContainer) {
+            UI.brightnessContainer.classList.add("muted");
+            UI.brightnessContainer.style.opacity = "";
+        }
+        if (UI.brightnessDisplay) UI.brightnessDisplay.textContent = "100%";
+        return; 
+    }
+    
+    if (UI.brightnessSlider) {
+        UI.brightnessSlider.disabled = false;
+        UI.brightnessSlider.style.cursor = "";
+    }
+    if (UI.brightnessContainer) {
+        UI.brightnessContainer.classList.remove("muted");
+        UI.brightnessContainer.style.opacity = "";
+    }
     
     if (!brightnessDragging) {
         UI.brightnessSlider.value = data.value;

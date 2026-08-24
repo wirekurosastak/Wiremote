@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="hu">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
@@ -9,12 +10,15 @@
     <title>PC Remote</title>
     <link rel="stylesheet" href="style.css?v=4">
 </head>
+
 <body>
     <div class="container">
 
         <div class="header">
             <h1>PC Remote</h1>
-            <div id="statusBadge" class="status-badge"><div class="dot"></div><span id="statusText">Offline</span></div>
+            <div id="statusBadge" class="status-badge">
+                <div class="dot"></div><span id="statusText">Offline</span>
+            </div>
         </div>
 
         <!-- MEDIA (Now Playing + Global + Web) -->
@@ -23,7 +27,8 @@
 
             <!-- Now Playing Area -->
             <div id="nowPlayingCard">
-                <div id="npEmpty" style="display: flex; justify-content: center; align-items: center; height: 64px; color: var(--secondary); font-weight: 600; font-size: 15px;">
+                <div id="npEmpty"
+                    style="display: flex; justify-content: center; align-items: center; height: 64px; color: var(--secondary); font-weight: 600; font-size: 15px;">
                     Nothing there...
                 </div>
                 <div class="np-row" id="npContent" style="display: none;">
@@ -51,62 +56,72 @@
         <details class="card-dropdown" open>
             <summary id="audioDisplayTabs">
                 <div style="display: flex; gap: 8px; align-items: center;">
-                    <span id="tabAudio" style="text-decoration: underline; cursor: pointer; text-underline-offset: 4px; padding: 4px 8px; margin-left: -8px;">AUDIO</span>
+                    <span id="tabAudio"
+                        style="text-decoration: underline; cursor: pointer; text-underline-offset: 4px; padding: 4px 8px; margin-left: -8px;">AUDIO</span>
                     <span style="opacity: 0.4; font-weight: 300;">/</span>
-                    <span id="tabDisplay" style="cursor: pointer; opacity: 0.6; text-underline-offset: 4px; padding: 4px 8px;">DISPLAY</span>
+                    <span id="tabDisplay"
+                        style="cursor: pointer; opacity: 0.6; text-underline-offset: 4px; padding: 4px 8px;">DISPLAY</span>
                 </div>
             </summary>
 
-            <!-- AUDIO CONTENT -->
-            <div id="contentAudio">
-                <!-- Master Volume -->
-                <div class="master-vol-row">
-                    <input id="slider" type="range" min="0" max="100" value="50">
-                    <div class="volume-number" id="volumeDisplay">--%</div>
+            <div id="tabContentContainer">
+                <!-- AUDIO CONTENT -->
+                <div id="contentAudio">
+                    <!-- Master Volume -->
+                    <div class="master-vol-row">
+                        <input id="slider" type="range" min="0" max="100" value="50">
+                        <div class="volume-number" id="volumeDisplay">--%</div>
+                    </div>
+
+                    <hr class="card-divider">
+
+                    <!-- Output Device -->
+                    <details class="dropdown-details">
+                        <summary>Output Device</summary>
+                        <div id="deviceList" class="device-list">
+                            <div class="hint">…</div>
+                        </div>
+                    </details>
+
+                    <!-- Volume Mixer -->
+                    <details class="dropdown-details" style="margin-bottom: 0;">
+                        <summary>Volume Mixer</summary>
+                        <div id="sessionList" class="session-list">
+                            <div class="hint">No active apps</div>
+                        </div>
+                    </details>
                 </div>
 
-                <hr class="card-divider">
+                <!-- DISPLAY CONTENT -->
+                <div id="contentDisplay" style="display: none;">
+                    <div class="master-vol-row" id="brightnessContainer">
+                        <input id="brightnessSlider" type="range" min="0" max="100" value="50">
+                        <div class="volume-number" id="brightnessDisplay" style="white-space: nowrap;">--%</div>
+                    </div>
 
-                <!-- Output Device -->
-                <details class="dropdown-details">
-                    <summary>Output Device</summary>
-                    <div id="deviceList" class="device-list"><div class="hint">…</div></div>
-                </details>
+                    <hr class="card-divider" id="brightnessDivider">
 
-                <!-- Volume Mixer -->
-                <details class="dropdown-details" style="margin-bottom: 0;">
-                    <summary>Volume Mixer</summary>
-                    <div id="sessionList" class="session-list"><div class="hint">No active apps</div></div>
-                </details>
-            </div>
+                    <details class="dropdown-details" style="margin-bottom: 12px; margin-top: 8px;">
+                        <summary>Monitors</summary>
+                        <div id="displayList" class="device-list">
+                            <div class="hint">…</div>
+                        </div>
+                    </details>
 
-            <!-- DISPLAY CONTENT -->
-            <div id="contentDisplay" style="display: none;">
-                <div class="master-vol-row" id="brightnessContainer" style="display: none;">
-                    <div class="brightness-icon">☀️</div>
-                    <input id="brightnessSlider" type="range" min="0" max="100" value="50">
-                    <div class="volume-number" id="brightnessDisplay">--%</div>
+                    <details class="dropdown-details" style="margin-bottom: 12px;">
+                        <summary>Main Monitor</summary>
+                        <select id="primaryMonitorSelect"
+                            style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;"></select>
+                    </details>
+                    <details class="dropdown-details" style="margin-bottom: 0;">
+                        <summary>Mode</summary>
+                        <select id="projectionModeSelect"
+                            style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;">
+                            <option value="extend" selected>Extend</option>
+                            <option value="clone">Clone</option>
+                        </select>
+                    </details>
                 </div>
-
-                <hr class="card-divider" id="brightnessDivider" style="display: none;">
-                
-                <details class="dropdown-details" style="margin-bottom: 12px; margin-top: 8px;">
-                    <summary>Monitors</summary>
-                    <div id="displayList" class="device-list"><div class="hint">…</div></div>
-                </details>
-
-                <details class="dropdown-details" style="margin-bottom: 12px;">
-                    <summary>Main Monitor</summary>
-                    <select id="primaryMonitorSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;"></select>
-                </details>
-                <details class="dropdown-details" style="margin-bottom: 0;">
-                    <summary>Mode</summary>
-                    <select id="projectionModeSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;">
-                        <option value="" disabled selected>Mode</option>
-                        <option value="extend">Extend</option>
-                        <option value="clone">Clone</option>
-                    </select>
-                </details>
             </div>
         </details>
 
@@ -131,7 +146,7 @@
             <button type="button" id="btnKeyboard" class="btn-keyboard">Keyboard</button>
 
             <input type="text" id="hiddenKeyboard" inputmode="text" autocomplete="off" autocorrect="off"
-                   spellcheck="false" style="position:fixed; left:-9999px; top:0; opacity:0; height:1px; width:1px;">
+                spellcheck="false" style="position:fixed; left:-9999px; top:0; opacity:0; height:1px; width:1px;">
         </details>
 
         <!-- POWER -->
@@ -139,27 +154,35 @@
             <summary class="power-summary" style="display: block;">
                 <div style="display: flex; justify-content: space-between; align-items: center;">
                     <span>POWER</span>
-                    <span id="timerBadge" style="display: none; font-size: 12px; font-weight: 600; color: var(--accent); flex: 1; text-align: center; padding: 0 8px;"></span>
+                    <span id="timerBadge"
+                        style="display: none; font-size: 12px; font-weight: 600; color: var(--accent); flex: 1; text-align: center; padding: 0 8px;"></span>
                     <span class="power-arrow">▼</span>
                 </div>
             </summary>
             <div class="timer-row">
                 <div class="timer-col"><label>Hours</label><input type="number" id="timeHours" min="0" value="0"></div>
-                <div class="timer-col"><label>Minutes</label><input type="number" id="timeMins" min="0" max="59" value="0"></div>
-                <div class="timer-col"><label>Seconds</label><input type="number" id="timeSecs" min="0" max="59" value="0"></div>
+                <div class="timer-col"><label>Minutes</label><input type="number" id="timeMins" min="0" max="59"
+                        value="0"></div>
+                <div class="timer-col"><label>Seconds</label><input type="number" id="timeSecs" min="0" max="59"
+                        value="0"></div>
             </div>
 
             <div class="power-grid">
-                <button type="button" class="btn-primary" onclick="sendPowerCommand('shutdown')"><span class="power-icon">🔌</span> Shutdown</button>
-                <button type="button" onclick="sendPowerCommand('restart')"><span class="power-icon">↻</span> Restart</button>
-                <button type="button" onclick="sendPowerCommand('sleep')"><span class="power-icon">🌙</span> Sleep</button>
-                <button type="button" onclick="sendPowerCommand('hibernate')"><span class="power-icon">💾</span> Hibernate</button>
+                <button type="button" class="btn-primary" onclick="sendPowerCommand('shutdown')"><span
+                        class="power-icon">🔌</span> Shutdown</button>
+                <button type="button" onclick="sendPowerCommand('restart')"><span class="power-icon">↻</span>
+                    Restart</button>
+                <button type="button" onclick="sendPowerCommand('sleep')"><span class="power-icon">🌙</span>
+                    Sleep</button>
+                <button type="button" onclick="sendPowerCommand('hibernate')"><span class="power-icon">💾</span>
+                    Hibernate</button>
                 <button type="button" class="btn-cancel" onclick="sendPowerCommand('cancel')">Cancel</button>
             </div>
         </details>
 
     </div>
 
-    <script src="app.js?v=14"></script>
+    <script src="app.js?v=22"></script>
 </body>
+
 </html>

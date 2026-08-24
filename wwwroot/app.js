@@ -242,6 +242,24 @@ bindButton("btnMediaPlay", "media_play_pause");
 bindButton("btnMediaNext", "media_next");
 bindHoldButton("btnWebLeft",  "web_left");
 bindHoldButton("btnWebRight", "web_right");
+bindButton("btnDispOff", "displays_off");
+
+const projSelect = document.getElementById("projectionModeSelect");
+if (projSelect) {
+    projSelect.addEventListener("change", (e) => {
+        if (e.target.value) {
+            command("display_switch", { mode: e.target.value });
+            e.target.value = ""; // Reset after selection
+        }
+    });
+}
+
+const primarySelect = document.getElementById("primaryMonitorSelect");
+if (primarySelect) {
+    primarySelect.addEventListener("change", (e) => {
+        command("set_primary_display", { id: e.target.value });
+    });
+}
 
 let kbStartX, kbStartY, kbScrolled;
 UI.btnKb.addEventListener("touchstart", (e) => {
@@ -395,44 +413,66 @@ window.addEventListener("touchcancel", endSessionDrag, { passive: true });
 
 function renderDisplays(displays) {
     if (!UI.displayList) return;
-    UI.displayList.innerHTML = "";
+    
     if (displays.length === 0) {
         UI.displayList.innerHTML = `<div class="hint">No monitors found</div>`;
+        if (primarySelect) primarySelect.innerHTML = `<option>None</option>`;
         return;
     }
 
-    displays.forEach(d => {
-        const row = document.createElement("div");
-        row.className = "device-row";
-        
-        const name = document.createElement("div");
-        name.className = "device-name";
-        name.textContent = (d.isPrimary ? "⭐ " : "") + (d.name || d.id);
-        
-        const ctl = document.createElement("div");
-        ctl.className = "device-ctl";
-        
-        const label = document.createElement("label");
-        label.className = "toggle-switch";
-        
-        const cb = document.createElement("input");
-        cb.type = "checkbox";
-        cb.checked = d.isActive;
-        cb.addEventListener("change", (e) => {
-            command("set_display", { id: d.id, active: cb.checked });
-        });
-        
-        const slider = document.createElement("span");
-        slider.className = "toggle-slider";
-        
-        label.appendChild(cb);
-        label.appendChild(slider);
-        ctl.appendChild(label);
-        
-        row.appendChild(name);
-        row.appendChild(ctl);
-        UI.displayList.appendChild(row);
+    const hint = UI.displayList.querySelector('.hint');
+    if (hint) hint.remove();
+
+    const existingRows = {};
+    Array.from(UI.displayList.children).forEach(row => {
+        const id = row.dataset.id;
+        if (id) existingRows[id] = row;
     });
+
+    const newRows = new Set();
+    let primarySelectHtml = "";
+
+    displays.forEach(d => {
+        newRows.add(String(d.id));
+        let btn = existingRows[d.id];
+        
+        const displayName = d.name || d.id;
+        const rowLabel = (d.isPrimary ? "⭐ " : "") + displayName;
+
+        // Monitor gombok a listához
+        if (btn) {
+            btn.className = "device-btn" + (d.isActive ? " active" : "");
+            btn.querySelector(".dev-check").textContent = d.isActive ? "✓" : "";
+            btn.querySelector(".dev-name").textContent = rowLabel;
+        } else {
+            btn = document.createElement("button");
+            btn.type = "button";
+            btn.dataset.id = d.id;
+            btn.className = "device-btn" + (d.isActive ? " active" : "");
+            
+            btn.innerHTML = `<span class="dev-check">${d.isActive ? "✓" : ""}</span><span class="dev-name"></span>`;
+            btn.querySelector(".dev-name").textContent = rowLabel;
+            
+            btn.addEventListener("click", () => {
+                const isCurrentlyActive = btn.classList.contains("active");
+                command("set_display", { id: d.id, active: !isCurrentlyActive });
+            });
+            
+            UI.displayList.appendChild(btn);
+        }
+        
+        // Dropdown opciók építése a fő monitorhoz
+        primarySelectHtml += `<option value="${d.id}" ${d.isPrimary ? "selected" : ""}>${displayName}</option>`;
+    });
+
+    Object.keys(existingRows).forEach(id => {
+        if (!newRows.has(id)) existingRows[id].remove();
+    });
+    
+    // Dropdown frissítése (ha épp nem nyitotta meg a user)
+    if (primarySelect && document.activeElement !== primarySelect) {
+        primarySelect.innerHTML = primarySelectHtml;
+    }
 }
 
 function renderSessions(sessions) {

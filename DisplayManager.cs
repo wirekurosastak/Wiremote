@@ -66,6 +66,11 @@ namespace PCRemote
         [DllImport("user32.dll", CharSet = CharSet.Ansi)]
         static extern int ChangeDisplaySettingsEx(string? lpszDeviceName, ref DEVMODE lpDevMode, IntPtr hwnd, uint dwflags, IntPtr lParam);
 
+        [DllImport("user32.dll", CharSet = CharSet.Ansi, EntryPoint = "ChangeDisplaySettingsEx")]
+        static extern int ChangeDisplaySettingsExPtr(string? lpszDeviceName, IntPtr lpDevMode, IntPtr hwnd, uint dwflags, IntPtr lParam);
+
+        const uint CDS_SET_PRIMARY = 0x00000010;
+
         const uint DISPLAY_DEVICE_ATTACHED_TO_DESKTOP = 0x00000001;
         const uint DISPLAY_DEVICE_PRIMARY_DEVICE = 0x00000004;
         const int ENUM_CURRENT_SETTINGS = -1;
@@ -86,7 +91,8 @@ namespace PCRemote
 
         public static List<DisplayInfo> GetDisplays()
         {
-            var list = new List<DisplayInfo>();
+            var displays = new List<DisplayInfo>();
+            var seenHwIds = new Dictionary<string, DisplayInfo>(StringComparer.OrdinalIgnoreCase);
             
             var wmiNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             try
@@ -115,8 +121,6 @@ namespace PCRemote
             }
             catch { }
 
-            var seenHwIds = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
             uint i = 0;
             DISPLAY_DEVICE dd = new DISPLAY_DEVICE();
             dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
@@ -125,84 +129,255 @@ namespace PCRemote
             {
                 if ((dd.StateFlags & 0x00000008) == 0) // DISPLAY_DEVICE_MIRRORING_DRIVER
                 {
-                    bool isActive = (dd.StateFlags & DISPLAY_DEVICE_ATTACHED_TO_DESKTOP) != 0;
-                    bool isPrimary = (dd.StateFlags & DISPLAY_DEVICE_PRIMARY_DEVICE) != 0;
+                    bool isActive = (dd.StateFlags & 0x00000001) != 0; // DISPLAY_DEVICE_ATTACHED_TO_DESKTOP
+                    bool isPrimary = (dd.StateFlags & 0x00000004) != 0; // DISPLAY_DEVICE_PRIMARY_DEVICE
                     
-                    string displayName = dd.DeviceString;
-                    
-                    DISPLAY_DEVICE monitor = new DISPLAY_DEVICE();
-                    monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
-                    if (EnumDisplayDevices(dd.DeviceName, 0, ref monitor, 1)) // EDD_GET_DEVICE_INTERFACE_NAME
+                    if (isActive)
                     {
-                        string devId = monitor.DeviceID;
-                        if (devId.StartsWith(@"\\?\"))
+                        DISPLAY_DEVICE monitor = new DISPLAY_DEVICE();
+                        monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+                        bool hasMonitor = EnumDisplayDevices(dd.DeviceName, 0, ref monitor, 1);
+                        
+                        if (!hasMonitor)
                         {
-                            string[] parts = devId.Substring(4).Split('#');
-                            if (parts.Length >= 3)
+                            monitor = new DISPLAY_DEVICE();
+                            monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+                            hasMonitor = EnumDisplayDevices(dd.DeviceName, 0, ref monitor, 0);
+                        }
+
+                        if (hasMonitor)
+                        {
+                            string displayName = monitor.DeviceString;
+                            string devId = monitor.DeviceID;
+                            string hwId = null;
+                            
+                            if (!string.IsNullOrWhiteSpace(devId) && devId.StartsWith(@"\\?\"))
                             {
-                                string hwId = $"{parts[0]}#{parts[1]}#{parts[2]}";
-                                
-                                if (seenHwIds.Contains(hwId))
+                                string[] parts = devId.Substring(4).Split('#');
+                                if (parts.Length >= 3)
                                 {
-                                    i++;
-                                    dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
-                                    continue;
+                                    hwId = $"{parts[0]}#{parts[1]}#{parts[2]}";
+                                    if (wmiNames.ContainsKey(hwId) && !string.IsNullOrWhiteSpace(wmiNames[hwId]))
+                                        displayName = wmiNames[hwId];
                                 }
-                                seenHwIds.Add(hwId);
-                                
-                                if (wmiNames.ContainsKey(hwId) && !string.IsNullOrWhiteSpace(wmiNames[hwId]))
-                                    displayName = wmiNames[hwId];
-                                else if (!string.IsNullOrWhiteSpace(monitor.DeviceString))
-                                    displayName = monitor.DeviceString;
+                            }
+                            
+                            if (string.IsNullOrWhiteSpace(displayName))
+                            {
+                                displayName = dd.DeviceString;
+                            }
+
+                            var info = new DisplayInfo
+                            {
+                                Id = dd.DeviceName,
+                                Name = displayName,
+                                IsActive = true,
+                                IsPrimary = isPrimary
+                            };
+
+                            if (hwId != null)
+                            {
+                                if (!seenHwIds.ContainsKey(hwId))
+                                {
+                                    seenHwIds[hwId] = info;
+                                    displays.Add(info);
+                                }
+                            }
+                            else
+                            {
+                                displays.Add(info);
                             }
                         }
                     }
-
-                    list.Add(new DisplayInfo
-                    {
-                        Id = dd.DeviceName,
-                        Name = displayName,
-                        IsActive = isActive,
-                        IsPrimary = isPrimary
-                    });
                 }
                 
                 i++;
                 dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
             }
-            return list;
+
+            var activeHwIds = seenHwIds.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            foreach (var kvp in wmiNames)
+            {
+                if (!activeHwIds.Contains(kvp.Key))
+                {
+                    displays.Add(new DisplayInfo
+                    {
+                        Id = "DISABLED_" + kvp.Key,
+                        Name = kvp.Value + " (Disconnected)",
+                        IsActive = false,
+                        IsPrimary = false
+                    });
+                }
+            }
+
+            return displays;
         }
 
-        public static void ToggleDisplay(string deviceName, bool enable)
+        private static List<string> GetInactiveAdaptersForHwId(string targetHwId)
+        {
+            var list = new List<string>();
+            var fallbackList = new List<string>();
+
+            uint i = 0;
+            DISPLAY_DEVICE dd = new DISPLAY_DEVICE();
+            dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+
+            while (EnumDisplayDevices(null, i, ref dd, 0))
+            {
+                if ((dd.StateFlags & 0x00000008) == 0 && (dd.StateFlags & 0x00000001) == 0)
+                {
+                    fallbackList.Add(dd.DeviceName);
+
+                    DISPLAY_DEVICE monitor = new DISPLAY_DEVICE();
+                    monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+                    bool hasMonitor = EnumDisplayDevices(dd.DeviceName, 0, ref monitor, 1);
+                    if (!hasMonitor)
+                    {
+                        monitor = new DISPLAY_DEVICE();
+                        monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+                        hasMonitor = EnumDisplayDevices(dd.DeviceName, 0, ref monitor, 0);
+                    }
+
+                    if (hasMonitor && !string.IsNullOrWhiteSpace(monitor.DeviceID) && monitor.DeviceID.StartsWith(@"\\?\"))
+                    {
+                        string[] parts = monitor.DeviceID.Substring(4).Split('#');
+                        if (parts.Length >= 3)
+                        {
+                            string hwId = $"{parts[0]}#{parts[1]}#{parts[2]}";
+                            if (string.Equals(hwId, targetHwId, StringComparison.OrdinalIgnoreCase))
+                            {
+                                list.Add(dd.DeviceName);
+                            }
+                        }
+                    }
+                }
+                i++;
+                dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+            }
+
+            return list.Count > 0 ? list : fallbackList;
+        }
+
+        private static bool TryEnableAdapter(string deviceName)
         {
             DEVMODE devMode = new DEVMODE();
             devMode.dmSize = (ushort)Marshal.SizeOf(devMode);
 
-            if (enable)
+            if (!EnumDisplaySettings(deviceName, ENUM_REGISTRY_SETTINGS, ref devMode)) return false;
+            
+            if (devMode.dmPelsWidth == 0 || devMode.dmPelsHeight == 0)
             {
-                if (!EnumDisplaySettings(deviceName, ENUM_REGISTRY_SETTINGS, ref devMode)) return;
-                devMode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
-            }
-            else
-            {
-                if (!EnumDisplaySettings(deviceName, ENUM_CURRENT_SETTINGS, ref devMode)) return;
-                devMode.dmPelsWidth = 0;
-                devMode.dmPelsHeight = 0;
-                devMode.dmPosition.x = 0;
-                devMode.dmPosition.y = 0;
-                devMode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+                DEVMODE maxMode = new DEVMODE();
+                maxMode.dmSize = (ushort)Marshal.SizeOf(maxMode);
+                int modeNum = 0;
+                uint maxWidth = 0;
+                while (EnumDisplaySettings(deviceName, modeNum, ref maxMode))
+                {
+                    if (maxMode.dmPelsWidth > maxWidth)
+                    {
+                        maxWidth = maxMode.dmPelsWidth;
+                        devMode = maxMode;
+                    }
+                    modeNum++;
+                }
+                if (devMode.dmPelsWidth == 0) return false;
             }
 
-            int ret = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CDS_UPDATEREGISTRY | CDS_NORESET, IntPtr.Zero);
-            if (ret == 0)
+            var displays = GetDisplays();
+            var primary = displays.FirstOrDefault(d => d.IsPrimary);
+            if (primary != null && primary.Id != deviceName)
             {
-                DEVMODE emptyMode = new DEVMODE();
-                emptyMode.dmSize = (ushort)Marshal.SizeOf(emptyMode);
-                // Apply the changes
-                ChangeDisplaySettingsEx(null, ref emptyMode, IntPtr.Zero, CDS_UPDATEREGISTRY, IntPtr.Zero);
+                DEVMODE primaryMode = new DEVMODE();
+                primaryMode.dmSize = (ushort)Marshal.SizeOf(primaryMode);
+                if (EnumDisplaySettings(primary.Id, ENUM_CURRENT_SETTINGS, ref primaryMode))
+                {
+                    if (devMode.dmPosition.x == primaryMode.dmPosition.x && devMode.dmPosition.y == primaryMode.dmPosition.y)
+                    {
+                        devMode.dmPosition.x = primaryMode.dmPosition.x + (int)primaryMode.dmPelsWidth;
+                        devMode.dmPosition.y = primaryMode.dmPosition.y;
+                    }
+                }
             }
+
+            devMode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+            int ret = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CDS_UPDATEREGISTRY | CDS_NORESET, IntPtr.Zero);
+            return ret == 0;
         }
 
+        private static bool TryDisableAdapter(string deviceName)
+        {
+            DEVMODE devMode = new DEVMODE();
+            devMode.dmSize = (ushort)Marshal.SizeOf(devMode);
+            if (!EnumDisplaySettings(deviceName, ENUM_CURRENT_SETTINGS, ref devMode)) return false;
+            devMode.dmPelsWidth = 0;
+            devMode.dmPelsHeight = 0;
+            devMode.dmPosition.x = 0;
+            devMode.dmPosition.y = 0;
+            devMode.dmFields = DM_POSITION | DM_PELSWIDTH | DM_PELSHEIGHT;
+            int ret = ChangeDisplaySettingsEx(deviceName, ref devMode, IntPtr.Zero, CDS_UPDATEREGISTRY | CDS_NORESET, IntPtr.Zero);
+            return ret == 0;
+        }
+
+        public static void ToggleDisplay(string deviceName, bool enable)
+        {
+            if (deviceName.StartsWith("DISABLED_") && enable)
+            {
+                string hwId = deviceName.Substring("DISABLED_".Length);
+                var inactiveAdapters = GetInactiveAdaptersForHwId(hwId);
+                
+                foreach (var adapter in inactiveAdapters)
+                {
+                    if (TryEnableAdapter(adapter))
+                    {
+                        ChangeDisplaySettingsExPtr(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+                        return;
+                    }
+                }
+                return;
+            }
+
+            if (!deviceName.StartsWith("DISABLED_"))
+            {
+                bool success = enable ? TryEnableAdapter(deviceName) : TryDisableAdapter(deviceName);
+                if (success)
+                {
+                    ChangeDisplaySettingsExPtr(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+                }
+            }
+        }
+        
+        public static void SetPrimaryDisplay(string deviceName)
+        {
+            var displays = GetDisplays();
+            var currentPrimary = displays.FirstOrDefault(d => d.IsPrimary);
+            if (currentPrimary != null && currentPrimary.Id != deviceName)
+            {
+                DEVMODE targetMode = new DEVMODE();
+                targetMode.dmSize = (ushort)Marshal.SizeOf(targetMode);
+                if (EnumDisplaySettings(deviceName, ENUM_CURRENT_SETTINGS, ref targetMode))
+                {
+                    int offsetX = targetMode.dmPosition.x;
+                    int offsetY = targetMode.dmPosition.y;
+
+                    targetMode.dmPosition.x = 0;
+                    targetMode.dmPosition.y = 0;
+                    targetMode.dmFields = DM_POSITION;
+                    ChangeDisplaySettingsEx(deviceName, ref targetMode, IntPtr.Zero, CDS_UPDATEREGISTRY | CDS_NORESET | CDS_SET_PRIMARY, IntPtr.Zero);
+
+                    DEVMODE oldMode = new DEVMODE();
+                    oldMode.dmSize = (ushort)Marshal.SizeOf(oldMode);
+                    if (EnumDisplaySettings(currentPrimary.Id, ENUM_CURRENT_SETTINGS, ref oldMode))
+                    {
+                        oldMode.dmPosition.x -= offsetX;
+                        oldMode.dmPosition.y -= offsetY;
+                        oldMode.dmFields = DM_POSITION;
+                        ChangeDisplaySettingsEx(currentPrimary.Id, ref oldMode, IntPtr.Zero, CDS_UPDATEREGISTRY | CDS_NORESET, IntPtr.Zero);
+                    }
+                }
+                ChangeDisplaySettingsExPtr(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+            }
+        }
+        
         static readonly JsonSerializerOptions _jsonOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
         public static void SendDisplays(IWebSocketConnection socket)

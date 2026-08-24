@@ -28,6 +28,7 @@ namespace PCRemote
             _commandRouter["volume_down"] = (s, r) => { AudioService.VolumeChange(-5); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"down → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; };
             _commandRouter["set_volume"] = (s, r) => { AudioService.SetVolume(r.GetProperty("value").GetInt32()); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"set  → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; };
             _commandRouter["mute"] = (s, r) => { AudioService.ToggleMute(); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", vs.muted ? "muted" : "unmuted", ConsoleColor.Yellow); return Task.CompletedTask; };
+            
 
             _commandRouter["get_sessions"] = (s, r) => { AudioService.SendSessions(s); return Task.CompletedTask; };
             _commandRouter["set_session_volume"] = (s, r) =>
@@ -91,6 +92,15 @@ namespace PCRemote
                 DisplayManager.ToggleDisplay(id, active);
                 DisplayManager.BroadcastDisplays();
                 Logger.Log("DISPLAY", $"{id} -> {(active ? "on" : "off")}", ConsoleColor.Cyan);
+                return Task.CompletedTask;
+            };
+
+            _commandRouter["set_primary_display"] = (s, r) =>
+            {
+                var id = r.GetProperty("id").GetString() ?? "";
+                DisplayManager.SetPrimaryDisplay(id);
+                DisplayManager.BroadcastDisplays();
+                Logger.Log("DISPLAY", $"Primary monitor changed", ConsoleColor.Cyan);
                 return Task.CompletedTask;
             };
 

@@ -80,20 +80,28 @@
             </div>
 
             <hr class="card-divider" id="brightnessDivider" style="display: none;">
+            
             <details class="dropdown-details" open style="margin-bottom: 12px; margin-top: 8px;">
                 <summary>Monitors</summary>
                 <div id="displayList" class="device-list"><div class="hint">…</div></div>
             </details>
-            
-            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Projection Mode</div>
-            <div class="media-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 12px;">
-                <button type="button" onclick="command('display_switch', { mode: 'internal' })" style="font-size: 12px; padding: 10px 4px;">PC Only</button>
-                <button type="button" onclick="command('display_switch', { mode: 'clone' })" style="font-size: 12px; padding: 10px 4px;">Clone</button>
-                <button type="button" onclick="command('display_switch', { mode: 'extend' })" style="font-size: 12px; padding: 10px 4px;">Extend</button>
-                <button type="button" onclick="command('display_switch', { mode: 'external' })" style="font-size: 12px; padding: 10px 4px;">2nd Only</button>
-            </div>
 
-            <button type="button" class="btn-cancel" onclick="command('displays_off')">Turn Off Displays</button>
+            <details class="dropdown-details" open style="margin-bottom: 12px;">
+                <summary>Main Monitor Selector</summary>
+                <select id="primaryMonitorSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;"></select>
+            </details>
+    
+            <div style="font-size: 12px; color: var(--secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Projection Mode</div>
+            <details class="dropdown-details" open style="margin-bottom: 12px;">
+                <summary>Mode Selector</summary>
+                <select id="projectionModeSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;">
+                    <option value="" disabled selected>Select Mode</option>
+                    <option value="extend">Extend</option>
+                    <option value="clone">Clone</option>
+                    <option value="internal">Internal Only</option>
+                    <option value="external">External Only</option>
+                </select>
+            </details>
         </details>
 
         <!-- CONTROLS -->

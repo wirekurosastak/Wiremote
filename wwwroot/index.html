@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="hu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+    <meta name="theme-color" content="#000000">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <title>PC Remote</title>
+    <link rel="stylesheet" href="style.css?v=4">
+</head>
+<body>
+    <div class="container">
+
+        <div class="header">
+            <h1>PC Remote</h1>
+            <div id="statusBadge" class="status-badge"><div class="dot"></div><span id="statusText">Offline</span></div>
+        </div>
+
+        <!-- MEDIA (Now Playing + Global + Web) -->
+        <details class="card-dropdown" open>
+            <summary>MEDIA</summary>
+
+            <!-- Now Playing (hidden until a session is active) -->
+            <div id="nowPlayingCard" style="display: none;">
+                <div class="np-row">
+                    <div class="np-art" id="npArt">🎵</div>
+                    <div class="np-meta">
+                        <div class="np-title" id="npTitle">—</div>
+                        <div class="np-artist" id="npArtist"></div>
+                        <div class="np-status" id="npStatus"></div>
+                    </div>
+                </div>
+                <hr class="card-divider">
+            </div>
+
+            <!-- Player Controls -->
+            <div class="media-grid">
+                <button type="button" id="btnMediaPrev">⏮</button>
+                <button type="button" id="btnWebLeft">−15s</button>
+                <button type="button" class="play-btn" id="btnMediaPlay">⏯</button>
+                <button type="button" id="btnWebRight">+15s</button>
+                <button type="button" id="btnMediaNext">⏭</button>
+            </div>
+        </details>
+
+        <!-- AUDIO (Master Volume + Output Device + App Volume) -->
+        <details class="card-dropdown" open>
+            <summary>AUDIO</summary>
+
+            <!-- Master Volume -->
+            <div class="master-vol-row">
+                <input id="slider" type="range" min="0" max="100" value="50">
+                <div class="volume-number" id="volumeDisplay">--%</div>
+            </div>
+
+            <hr class="card-divider">
+
+            <!-- Output Device -->
+            <details class="dropdown-details">
+                <summary>Output Device</summary>
+                <div id="deviceList" class="device-list"><div class="hint">…</div></div>
+            </details>
+
+            <!-- Volume Mixer -->
+            <details class="dropdown-details" style="margin-bottom: 0;">
+                <summary>Volume Mixer</summary>
+                <div id="sessionList" class="session-list"><div class="hint">No active apps</div></div>
+            </details>
+        </details>
+
+        <!-- DISPLAY -->
+        <details class="card-dropdown" open id="displayCard">
+            <summary>DISPLAY</summary>
+            
+            <div class="master-vol-row" id="brightnessContainer" style="display: none;">
+                <div class="brightness-icon">☀️</div>
+                <input id="brightnessSlider" type="range" min="0" max="100" value="50">
+                <div class="volume-number" id="brightnessDisplay">--%</div>
+            </div>
+
+            <hr class="card-divider" id="brightnessDivider" style="display: none;">
+            <details class="dropdown-details" open style="margin-bottom: 12px; margin-top: 8px;">
+                <summary>Monitors</summary>
+                <div id="displayList" class="device-list"><div class="hint">…</div></div>
+            </details>
+            
+            <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Projection Mode</div>
+            <div class="media-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 12px;">
+                <button type="button" onclick="command('display_switch', { mode: 'internal' })" style="font-size: 12px; padding: 10px 4px;">PC Only</button>
+                <button type="button" onclick="command('display_switch', { mode: 'clone' })" style="font-size: 12px; padding: 10px 4px;">Clone</button>
+                <button type="button" onclick="command('display_switch', { mode: 'extend' })" style="font-size: 12px; padding: 10px 4px;">Extend</button>
+                <button type="button" onclick="command('display_switch', { mode: 'external' })" style="font-size: 12px; padding: 10px 4px;">2nd Only</button>
+            </div>
+
+            <button type="button" class="btn-cancel" onclick="command('displays_off')">Turn Off Displays</button>
+        </details>
+
+        <!-- CONTROLS -->
+        <details class="card-dropdown">
+            <summary>CONTROLS</summary>
+
+            <div id="touchpad" class="touchpad-area">
+                <span class="touchpad-text">TOUCHPAD</span>
+            </div>
+
+            <div class="sensitivity-control">
+                <label for="sensSlider"><span>Sensitivity</span> <span id="sensValue">5.0x</span></label>
+                <input id="sensSlider" type="range" min="0" max="10" step="0.1" value="5.0">
+            </div>
+
+            <div class="mouse-buttons">
+                <button type="button" id="btnLeftClick">Left Click</button>
+                <button type="button" id="btnRightClick">Right Click</button>
+            </div>
+
+            <button type="button" id="btnKeyboard" class="btn-keyboard">Keyboard</button>
+
+            <input type="text" id="hiddenKeyboard" inputmode="text" autocomplete="off" autocorrect="off"
+                   spellcheck="false" style="position:fixed; left:-9999px; top:0; opacity:0; height:1px; width:1px;">
+        </details>
+
+        <!-- POWER -->
+        <details id="powerDetails" class="card-dropdown">
+            <summary class="power-summary" style="display: block;">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <span>POWER</span>
+                    <span id="timerBadge" style="display: none; font-size: 12px; font-weight: 600; color: var(--accent); flex: 1; text-align: center; padding: 0 8px;"></span>
+                    <span class="power-arrow">▼</span>
+                </div>
+            </summary>
+            <div class="timer-row">
+                <div class="timer-col"><label>Hours</label><input type="number" id="timeHours" min="0" value="0"></div>
+                <div class="timer-col"><label>Minutes</label><input type="number" id="timeMins" min="0" max="59" value="0"></div>
+                <div class="timer-col"><label>Seconds</label><input type="number" id="timeSecs" min="0" max="59" value="0"></div>
+            </div>
+
+            <div class="power-grid">
+                <button type="button" class="btn-primary" onclick="sendPowerCommand('shutdown')"><span class="power-icon">🔌</span> Shutdown</button>
+                <button type="button" onclick="sendPowerCommand('restart')"><span class="power-icon">↻</span> Restart</button>
+                <button type="button" onclick="sendPowerCommand('sleep')"><span class="power-icon">🌙</span> Sleep</button>
+                <button type="button" onclick="sendPowerCommand('hibernate')"><span class="power-icon">💾</span> Hibernate</button>
+                <button type="button" class="btn-cancel" onclick="sendPowerCommand('cancel')">Cancel</button>
+            </div>
+        </details>
+
+    </div>
+
+    <script src="app.js?v=4"></script>
+</body>
+</html>

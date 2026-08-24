@@ -15,7 +15,6 @@ namespace PCRemote
         static MMDeviceNotificationClient? _notifier;
 
         static readonly SessionEventHandler _sessionHandler = new();
-
         static readonly Dictionary<uint, AudioSessionControl> _sessionCache = new();
 
         class SessionEventHandler : IAudioSessionEventsHandler
@@ -56,25 +55,33 @@ namespace PCRemote
                     _device.AudioEndpointVolume.OnVolumeNotification += _volHandler;
                 }
             }
-            catch { }
-
-            var method = typeof(MMDeviceEnumerator).GetMethod("CreateNotificationClient", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
-            if (method != null)
+            catch (Exception ex)
             {
-                _notifier = method.Invoke(_enumerator, new object[] { false }) as MMDeviceNotificationClient;
-                if (_notifier != null)
+                Logger.Log("AUDIO", $"Default device init failed: {ex.Message}", ConsoleColor.DarkGray);
+            }
+
+            try
+            {
+                var method = typeof(MMDeviceEnumerator).GetMethod("CreateNotificationClient", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public);
+                if (method != null)
                 {
-                    _notifier.DefaultDeviceChanged += (s, e) =>
+                    _notifier = method.Invoke(_enumerator, new object[] { false }) as MMDeviceNotificationClient;
+                    if (_notifier != null)
                     {
-                        if (e.Flow == DataFlow.Render && e.Role == Role.Multimedia)
+                        _notifier.DefaultDeviceChanged += (s, e) =>
                         {
-                            ReacquireDefaultDevice();
-                        }
-                    };
-                    _notifier.DeviceAdded += (s, e) => BroadcastDevices();
-                    _notifier.DeviceRemoved += (s, e) => BroadcastDevices();
-                    _notifier.DeviceStateChanged += (s, e) => BroadcastDevices();
+                            if (e.Flow == DataFlow.Render && e.Role == Role.Multimedia)
+                                ReacquireDefaultDevice();
+                        };
+                        _notifier.DeviceAdded += (s, e) => BroadcastDevices();
+                        _notifier.DeviceRemoved += (s, e) => BroadcastDevices();
+                        _notifier.DeviceStateChanged += (s, e) => BroadcastDevices();
+                    }
                 }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log("AUDIO", $"Notifier init failed: {ex.Message}", ConsoleColor.DarkGray);
             }
 
             AttachSessionListeners();
@@ -95,7 +102,10 @@ namespace PCRemote
                             RegisterAllSessions(mgr);
                             BroadcastSessions();
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            Logger.Log("AUDIO", $"Session creation error: {ex.Message}", ConsoleColor.DarkGray);
+                        }
                     };
                     RegisterAllSessions(mgr);
                 }
@@ -123,7 +133,10 @@ namespace PCRemote
                         s.RegisterEventClient(_sessionHandler);
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    Logger.Log("AUDIO", $"Register session failed: {ex.Message}", ConsoleColor.DarkGray);
+                }
             }
         }
 
@@ -145,7 +158,7 @@ namespace PCRemote
                     }
                     catch
                     {
-                        toRemove.Add(kv.Key);
+                        toRemove.Add(kv.Key); // Ha hiba van a COM objektummal, dobjuk el.
                     }
                 }
                 foreach (var id in toRemove) _sessionCache.Remove(id);
@@ -163,7 +176,10 @@ namespace PCRemote
                         kv.Value.UnRegisterEventClient(_sessionHandler);
                         kv.Value.Dispose();
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Logger.Log("AUDIO", $"Session cache clear error: {ex.Message}", ConsoleColor.DarkGray);
+                    }
                 }
                 _sessionCache.Clear();
             }
@@ -175,12 +191,26 @@ namespace PCRemote
             {
                 ClearSessionCache();
 
-                try { if (_device != null) _device.AudioEndpointVolume.OnVolumeNotification -= _volHandler; } catch { }
+                if (_device != null)
+                {
+                    try { _device.AudioEndpointVolume.OnVolumeNotification -= _volHandler; }
+                    catch { } // Itt elfogadható az elnyelés, mert épp megsemmisült az eszköz
+                }
 
-                try { _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); }
-                catch { _device = null; }
+                try 
+                { 
+                    _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); 
+                }
+                catch 
+                { 
+                    _device = null; 
+                }
 
-                try { if (_device != null) _device.AudioEndpointVolume.OnVolumeNotification += _volHandler; } catch { }
+                if (_device != null)
+                {
+                    try { _device.AudioEndpointVolume.OnVolumeNotification += _volHandler; }
+                    catch (Exception ex) { Logger.Log("AUDIO", $"Vol handler reattach error: {ex.Message}", ConsoleColor.DarkGray); }
+                }
 
                 AttachSessionListeners();
             }
@@ -277,7 +307,7 @@ namespace PCRemote
                     using var p = Process.GetProcessById((int)pid);
                     name = p.ProcessName;
                 }
-                catch { }
+                catch { } // Process is already dead or access denied
             }
 
             if (string.IsNullOrEmpty(name)) name = $"PID {pid}";
@@ -310,14 +340,21 @@ namespace PCRemote
                         bool mute = s.SimpleAudioVolume.Mute;
                         list.Add(new { id = kv.Key, name = sName, volume = vol, muted = mute });
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Logger.Log("AUDIO", $"Build session JSON error: {ex.Message}", ConsoleColor.DarkGray);
+                    }
                 }
             }
             return JsonSerializer.Serialize(new { type = "sessions", sessions = list });
         }
 
         public static void BroadcastSessions() => Server.Broadcast(BuildSessionsJson());
-        public static void SendSessions(IWebSocketConnection socket) { try { socket.Send(BuildSessionsJson()); } catch { } }
+        public static void SendSessions(IWebSocketConnection socket) 
+        { 
+            try { socket.Send(BuildSessionsJson()); } 
+            catch (Exception ex) { Logger.Log("WS", $"SendSessions failed: {ex.Message}", ConsoleColor.DarkGray); } 
+        }
 
         public static void SetSessionVolume(uint pid, int percent)
         {
@@ -360,7 +397,12 @@ namespace PCRemote
             try
             {
                 string defId = "";
-                try { using var def = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); defId = def.ID; } catch { }
+                try 
+                { 
+                    using var def = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia); 
+                    defId = def.ID; 
+                } 
+                catch (Exception ex) { Logger.Log("DEVICE", $"DefDevice get failed: {ex.Message}", ConsoleColor.DarkGray); }
 
                 var devices = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
                 for (int i = 0; i < devices.Count; i++)
@@ -370,7 +412,10 @@ namespace PCRemote
                         using var d = devices[i];
                         list.Add(new { id = d.ID, name = d.FriendlyName, isDefault = d.ID == defId });
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        Logger.Log("DEVICE", $"Enumerate device iter failed: {ex.Message}", ConsoleColor.DarkGray);
+                    }
                 }
             }
             catch (Exception ex) { Logger.Log("DEVICE", $"enumerate failed: {ex.Message}", ConsoleColor.Red); }
@@ -378,7 +423,11 @@ namespace PCRemote
         }
 
         public static void BroadcastDevices() => Server.Broadcast(BuildDevicesJson());
-        public static void SendDevices(IWebSocketConnection socket) { try { socket.Send(BuildDevicesJson()); } catch { } }
+        public static void SendDevices(IWebSocketConnection socket) 
+        { 
+            try { socket.Send(BuildDevicesJson()); } 
+            catch (Exception ex) { Logger.Log("WS", $"SendDevices failed: {ex.Message}", ConsoleColor.DarkGray); } 
+        }
 
         public static async void SetDefaultDevice(string deviceId)
         {
@@ -404,7 +453,8 @@ namespace PCRemote
         public static void SendInitialState(IWebSocketConnection socket)
         {
             var state = GetVolumeState();
-            try { socket.Send(JsonSerializer.Serialize(new { type = "volume", value = state.volume, muted = state.muted })); } catch { }
+            try { socket.Send(JsonSerializer.Serialize(new { type = "volume", value = state.volume, muted = state.muted })); } 
+            catch { }
             SendSessions(socket);
             SendDevices(socket);
         }
@@ -420,11 +470,14 @@ namespace PCRemote
                     _device.Dispose();
                     _device = null;
                 }
-            } catch { }
+            } 
+            catch (Exception ex) { Logger.Log("AUDIO", $"Device cleanup error: {ex.Message}", ConsoleColor.DarkGray); }
+
             try
             {
                 _enumerator?.Dispose();
-            } catch { }
+            } 
+            catch (Exception ex) { Logger.Log("AUDIO", $"Enumerator cleanup error: {ex.Message}", ConsoleColor.DarkGray); }
         }
     }
 }

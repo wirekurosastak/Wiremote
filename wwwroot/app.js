@@ -473,6 +473,18 @@ function renderDisplays(displays) {
     if (primarySelect && document.activeElement !== primarySelect) {
         primarySelect.innerHTML = primarySelectHtml;
     }
+    
+    const hasMultiple = displays.length > 1;
+    if (primarySelect) {
+        primarySelect.disabled = !hasMultiple;
+        primarySelect.style.opacity = hasMultiple ? "1" : "0.5";
+        primarySelect.style.cursor = hasMultiple ? "pointer" : "not-allowed";
+    }
+    if (projSelect) {
+        projSelect.disabled = !hasMultiple;
+        projSelect.style.opacity = hasMultiple ? "1" : "0.5";
+        projSelect.style.cursor = hasMultiple ? "pointer" : "not-allowed";
+    }
 }
 
 function renderSessions(sessions) {
@@ -571,13 +583,57 @@ window.addEventListener("touchend", endBrightDrag, { passive: true });
 window.addEventListener("touchcancel", endBrightDrag, { passive: true });
 
 function renderNowPlaying(d) {
-    if (!d.playing) { UI.nowPlayingCard.style.display = "none"; return; }
-    UI.nowPlayingCard.style.display = "block";
+    const emptyEl = document.getElementById("npEmpty");
+    const contentEl = document.getElementById("npContent");
+    if (!emptyEl || !contentEl) return;
+
+    if (!d.playing) { 
+        emptyEl.style.display = "flex";
+        contentEl.style.display = "none";
+        return; 
+    }
+    
+    emptyEl.style.display = "none";
+    contentEl.style.display = "flex";
+    
     UI.npTitle.textContent = d.title || "Unknown";
     UI.npArtist.textContent = d.artist || "";
     UI.npStatus.textContent = d.status === "playing" ? "▶ Playing" : "⏸ Paused";
     if (d.thumb) { UI.npArt.style.backgroundImage = `url('${d.thumb}')`; UI.npArt.classList.add("has-art"); }
     else { UI.npArt.style.backgroundImage = ""; UI.npArt.classList.remove("has-art"); }
+}
+
+const tabAudio = document.getElementById("tabAudio");
+const tabDisplay = document.getElementById("tabDisplay");
+const contentAudio = document.getElementById("contentAudio");
+const contentDisplay = document.getElementById("contentDisplay");
+
+if (tabAudio && tabDisplay && contentAudio && contentDisplay) {
+    const switchTab = (e, toAudio) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (toAudio) {
+            tabAudio.style.textDecoration = "underline";
+            tabAudio.style.opacity = "1";
+            tabDisplay.style.textDecoration = "none";
+            tabDisplay.style.opacity = "0.6";
+            contentAudio.style.display = "block";
+            contentDisplay.style.display = "none";
+        } else {
+            tabDisplay.style.textDecoration = "underline";
+            tabDisplay.style.opacity = "1";
+            tabAudio.style.textDecoration = "none";
+            tabAudio.style.opacity = "0.6";
+            contentDisplay.style.display = "block";
+            contentAudio.style.display = "none";
+        }
+    };
+
+    tabAudio.addEventListener("click", (e) => switchTab(e, true));
+    tabAudio.addEventListener("touchstart", (e) => switchTab(e, true), { passive: false });
+    
+    tabDisplay.addEventListener("click", (e) => switchTab(e, false));
+    tabDisplay.addEventListener("touchstart", (e) => switchTab(e, false), { passive: false });
 }
 
 connect();

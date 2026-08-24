@@ -24,86 +24,27 @@ namespace PCRemote
 
         static void RegisterCommands()
         {
-            _commandRouter["volume_up"] = (s, r) => { AudioService.VolumeChange(5); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"up  → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; };
-            _commandRouter["volume_down"] = (s, r) => { AudioService.VolumeChange(-5); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"down → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; };
-            _commandRouter["set_volume"] = (s, r) => { AudioService.SetVolume(r.GetProperty("value").GetInt32()); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"set  → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; };
-            _commandRouter["mute"] = (s, r) => { AudioService.ToggleMute(); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", vs.muted ? "muted" : "unmuted", ConsoleColor.Yellow); return Task.CompletedTask; };
-            
+            // Audio & Volume
+            _commandRouter["volume_up"] = HandleVolumeUp;
+            _commandRouter["volume_down"] = HandleVolumeDown;
+            _commandRouter["set_volume"] = HandleSetVolume;
+            _commandRouter["mute"] = HandleMute;
+            _commandRouter["get_sessions"] = HandleGetSessions;
+            _commandRouter["set_session_volume"] = HandleSetSessionVolume;
+            _commandRouter["session_mute"] = HandleSessionMute;
+            _commandRouter["get_devices"] = HandleGetDevices;
+            _commandRouter["set_device"] = HandleSetDevice;
 
-            _commandRouter["get_sessions"] = (s, r) => { AudioService.SendSessions(s); return Task.CompletedTask; };
-            _commandRouter["set_session_volume"] = (s, r) =>
-            {
-                var id = (uint)r.GetProperty("id").GetInt64();
-                AudioService.SetSessionVolume(id, r.GetProperty("value").GetInt32());
-                Logger.Log("APPVOL", $"pid {id} → {r.GetProperty("value").GetInt32()}%", ConsoleColor.Yellow);
-                return Task.CompletedTask;
-            };
-            _commandRouter["session_mute"] = (s, r) =>
-            {
-                var id = (uint)r.GetProperty("id").GetInt64();
-                bool m = AudioService.ToggleSessionMute(id);
-                AudioService.BroadcastSessions();
-                Logger.Log("APPVOL", $"pid {id} {(m ? "muted" : "unmuted")}", ConsoleColor.Yellow);
-                return Task.CompletedTask;
-            };
+            // Display & Brightness
+            _commandRouter["get_brightness"] = HandleGetBrightness;
+            _commandRouter["set_brightness"] = HandleSetBrightness;
+            _commandRouter["display_switch"] = HandleDisplaySwitch;
+            _commandRouter["displays_off"] = HandleDisplaysOff;
+            _commandRouter["get_displays"] = HandleGetDisplays;
+            _commandRouter["set_display"] = HandleSetDisplay;
+            _commandRouter["set_primary_display"] = HandleSetPrimaryDisplay;
 
-            _commandRouter["get_devices"] = (s, r) => { AudioService.SendDevices(s); return Task.CompletedTask; };
-            _commandRouter["set_device"] = (s, r) =>
-            {
-                var id = r.GetProperty("id").GetString() ?? "";
-                AudioService.SetDefaultDevice(id);
-                Logger.Log("DEVICE", "switched output", ConsoleColor.Cyan);
-                return Task.CompletedTask;
-            };
-
-            _commandRouter["get_brightness"] = (s, r) => { BrightnessService.SendBrightness(s); return Task.CompletedTask; };
-            _commandRouter["set_brightness"] = (s, r) =>
-            {
-                var v = r.GetProperty("value").GetInt32();
-                BrightnessService.SetBrightness(v);
-                Logger.Log("BRIGHT", $"→ {Math.Max(0, Math.Min(100, v))}%", ConsoleColor.DarkYellow);
-                return Task.CompletedTask;
-            };
-
-            _commandRouter["display_switch"] = (s, r) =>
-            {
-                var mode = r.GetProperty("mode").GetString() ?? "";
-                string arg = mode switch { "internal" => "/internal", "clone" => "/clone", "extend" => "/extend", "external" => "/external", _ => "" };
-                if (arg != "")
-                {
-                    try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("DisplaySwitch.exe", arg) { UseShellExecute = true, CreateNoWindow = true }); } catch { }
-                    Logger.Log("DISPLAY", $"switch {mode}", ConsoleColor.Cyan);
-                }
-                return Task.CompletedTask;
-            };
-
-            _commandRouter["displays_off"] = (s, r) =>
-            {
-                Interop.SendMessage(Interop.GetConsoleWindow(), 0x0112, (IntPtr)0xF170, (IntPtr)2);
-                Logger.Log("DISPLAY", "turn off", ConsoleColor.Cyan);
-                return Task.CompletedTask;
-            };
-
-            _commandRouter["get_displays"] = (s, r) => { DisplayManager.SendDisplays(s); return Task.CompletedTask; };
-            _commandRouter["set_display"] = (s, r) =>
-            {
-                var id = r.GetProperty("id").GetString() ?? "";
-                var active = r.GetProperty("active").GetBoolean();
-                DisplayManager.ToggleDisplay(id, active);
-                DisplayManager.BroadcastDisplays();
-                Logger.Log("DISPLAY", $"{id} -> {(active ? "on" : "off")}", ConsoleColor.Cyan);
-                return Task.CompletedTask;
-            };
-
-            _commandRouter["set_primary_display"] = (s, r) =>
-            {
-                var id = r.GetProperty("id").GetString() ?? "";
-                DisplayManager.SetPrimaryDisplay(id);
-                DisplayManager.BroadcastDisplays();
-                Logger.Log("DISPLAY", $"Primary monitor changed", ConsoleColor.Cyan);
-                return Task.CompletedTask;
-            };
-
+            // Media
             _commandRouter["media_play_pause"] = (s, r) => MediaService.MediaCommand(MediaService.MediaAction.PlayPause);
             _commandRouter["media_previous"] = (s, r) => MediaService.MediaCommand(MediaService.MediaAction.Previous);
             _commandRouter["media_next"] = (s, r) => MediaService.MediaCommand(MediaService.MediaAction.Next);
@@ -111,36 +52,124 @@ namespace PCRemote
             _commandRouter["web_left"] = (s, r) => MediaService.MediaSeek(-15);
             _commandRouter["web_right"] = (s, r) => MediaService.MediaSeek(15);
 
-            _commandRouter["mouse_move"] = (s, r) =>
-            {
-                var dx = r.TryGetProperty("dx", out var dxProp) ? dxProp.GetDouble() : 0.0;
-                var dy = r.TryGetProperty("dy", out var dyProp) ? dyProp.GetDouble() : 0.0;
-                InputService.MouseMove(s.ConnectionInfo.Id, dx, dy);
-                return Task.CompletedTask;
-            };
-            _commandRouter["mouse_scroll"] = (s, r) => { InputService.MouseScroll(r.TryGetProperty("dy", out var dyScroll) ? (int)dyScroll.GetDouble() : 0); return Task.CompletedTask; };
-            _commandRouter["mouse_down"] = (s, r) => { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; InputService.MouseToggle(btn, true); Logger.Log("MOUSE", $"{btn} down", ConsoleColor.Green); return Task.CompletedTask; };
-            _commandRouter["mouse_up"] = (s, r) => { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; InputService.MouseToggle(btn, false); Logger.Log("MOUSE", $"{btn} up", ConsoleColor.Green); return Task.CompletedTask; };
-            _commandRouter["mouse_click"] = (s, r) => { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; Logger.Log("MOUSE", $"{btn} click", ConsoleColor.Green); return InputService.MouseClick(btn); };
+            // Input (Mouse & Keyboard)
+            _commandRouter["mouse_move"] = HandleMouseMove;
+            _commandRouter["mouse_scroll"] = HandleMouseScroll;
+            _commandRouter["mouse_down"] = HandleMouseDown;
+            _commandRouter["mouse_up"] = HandleMouseUp;
+            _commandRouter["mouse_click"] = HandleMouseClick;
+            _commandRouter["type_text"] = HandleTypeText;
+            _commandRouter["key_press"] = HandleKeyPress;
 
-            _commandRouter["type_text"] = (s, r) => { var text = r.TryGetProperty("text", out var txt) ? (txt.GetString() ?? "") : ""; InputService.TypeText(text); Logger.Log("TYPE", $"{text.Length} char(s)", ConsoleColor.Green); return Task.CompletedTask; };
-            _commandRouter["key_press"] = (s, r) =>
-            {
-                var key = r.GetProperty("key").GetString();
-                if (key == "enter") { Logger.Log("KEY", "enter", ConsoleColor.Green); return InputService.KeyboardKey(InputService.VK_RETURN); }
-                else if (key == "backspace") { Logger.Log("KEY", "backspace", ConsoleColor.Green); return InputService.KeyboardKey(InputService.VK_BACK); }
-                return Task.CompletedTask;
-            };
-
-            _commandRouter["power"] = (s, r) => {
-                var action = r.GetProperty("action").GetString() ?? "";
-                var seconds = r.TryGetProperty("seconds", out var secs) ? secs.GetInt32() : 0;
-                if (action == "cancel") seconds = 0;
-                Logger.Log("POWER", seconds > 0 ? $"{action} in {seconds}s" : action, ConsoleColor.Red);
-                PowerService.HandleCommand(action, seconds);
-                return Task.CompletedTask;
-            };
+            // System Power
+            _commandRouter["power"] = HandlePower;
         }
+
+        #region Command Handlers
+
+        private static Task HandleVolumeUp(IWebSocketConnection s, JsonElement r) { AudioService.VolumeChange(5); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"up  → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; }
+        private static Task HandleVolumeDown(IWebSocketConnection s, JsonElement r) { AudioService.VolumeChange(-5); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"down → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; }
+        private static Task HandleSetVolume(IWebSocketConnection s, JsonElement r) { AudioService.SetVolume(r.GetProperty("value").GetInt32()); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", $"set  → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; }
+        private static Task HandleMute(IWebSocketConnection s, JsonElement r) { AudioService.ToggleMute(); var vs = AudioService.BroadcastVolume(); Logger.Log("VOLUME", vs.muted ? "muted" : "unmuted", ConsoleColor.Yellow); return Task.CompletedTask; }
+        
+        private static Task HandleGetSessions(IWebSocketConnection s, JsonElement r) { AudioService.SendSessions(s); return Task.CompletedTask; }
+        private static Task HandleSetSessionVolume(IWebSocketConnection s, JsonElement r)
+        {
+            var id = (uint)r.GetProperty("id").GetInt64();
+            int val = r.GetProperty("value").GetInt32();
+            AudioService.SetSessionVolume(id, val);
+            Logger.Log("APPVOL", $"pid {id} → {val}%", ConsoleColor.Yellow);
+            return Task.CompletedTask;
+        }
+        private static Task HandleSessionMute(IWebSocketConnection s, JsonElement r)
+        {
+            var id = (uint)r.GetProperty("id").GetInt64();
+            bool m = AudioService.ToggleSessionMute(id);
+            AudioService.BroadcastSessions();
+            Logger.Log("APPVOL", $"pid {id} {(m ? "muted" : "unmuted")}", ConsoleColor.Yellow);
+            return Task.CompletedTask;
+        }
+
+        private static Task HandleGetDevices(IWebSocketConnection s, JsonElement r) { AudioService.SendDevices(s); return Task.CompletedTask; }
+        private static Task HandleSetDevice(IWebSocketConnection s, JsonElement r)
+        {
+            var id = r.GetProperty("id").GetString() ?? "";
+            AudioService.SetDefaultDevice(id);
+            Logger.Log("DEVICE", "switched output", ConsoleColor.Cyan);
+            return Task.CompletedTask;
+        }
+
+        private static Task HandleGetBrightness(IWebSocketConnection s, JsonElement r) { BrightnessService.SendBrightness(s); return Task.CompletedTask; }
+        private static Task HandleSetBrightness(IWebSocketConnection s, JsonElement r)
+        {
+            var v = r.GetProperty("value").GetInt32();
+            BrightnessService.SetBrightness(v);
+            Logger.Log("BRIGHT", $"→ {Math.Max(0, Math.Min(100, v))}%", ConsoleColor.DarkYellow);
+            return Task.CompletedTask;
+        }
+
+        private static Task HandleDisplaySwitch(IWebSocketConnection s, JsonElement r)
+        {
+            var mode = r.GetProperty("mode").GetString() ?? "";
+            string arg = mode switch { "clone" => "/clone", "extend" => "/extend", _ => "" };
+            if (!string.IsNullOrEmpty(arg))
+            {
+                try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("DisplaySwitch.exe", arg) { UseShellExecute = true, CreateNoWindow = true }); } catch { }
+                Logger.Log("DISPLAY", $"switch {mode}", ConsoleColor.Cyan);
+            }
+            return Task.CompletedTask;
+        }
+        private static Task HandleDisplaysOff(IWebSocketConnection s, JsonElement r) { Interop.SendMessage(Interop.GetConsoleWindow(), 0x0112, (IntPtr)0xF170, (IntPtr)2); Logger.Log("DISPLAY", "turn off", ConsoleColor.Cyan); return Task.CompletedTask; }
+        private static Task HandleGetDisplays(IWebSocketConnection s, JsonElement r) { DisplayManager.SendDisplays(s); return Task.CompletedTask; }
+        private static Task HandleSetDisplay(IWebSocketConnection s, JsonElement r)
+        {
+            var id = r.GetProperty("id").GetString() ?? "";
+            var active = r.GetProperty("active").GetBoolean();
+            DisplayManager.ToggleDisplay(id, active);
+            DisplayManager.BroadcastDisplays();
+            Logger.Log("DISPLAY", $"{id} -> {(active ? "on" : "off")}", ConsoleColor.Cyan);
+            return Task.CompletedTask;
+        }
+        private static Task HandleSetPrimaryDisplay(IWebSocketConnection s, JsonElement r)
+        {
+            var id = r.GetProperty("id").GetString() ?? "";
+            DisplayManager.SetPrimaryDisplay(id);
+            DisplayManager.BroadcastDisplays();
+            Logger.Log("DISPLAY", $"Primary monitor changed", ConsoleColor.Cyan);
+            return Task.CompletedTask;
+        }
+
+        private static Task HandleMouseMove(IWebSocketConnection s, JsonElement r)
+        {
+            var dx = r.TryGetProperty("dx", out var dxProp) ? dxProp.GetDouble() : 0.0;
+            var dy = r.TryGetProperty("dy", out var dyProp) ? dyProp.GetDouble() : 0.0;
+            InputService.MouseMove(s.ConnectionInfo.Id, dx, dy);
+            return Task.CompletedTask;
+        }
+        private static Task HandleMouseScroll(IWebSocketConnection s, JsonElement r) { InputService.MouseScroll(r.TryGetProperty("dy", out var dyScroll) ? (int)dyScroll.GetDouble() : 0); return Task.CompletedTask; }
+        private static Task HandleMouseDown(IWebSocketConnection s, JsonElement r) { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; InputService.MouseToggle(btn, true); Logger.Log("MOUSE", $"{btn} down", ConsoleColor.Green); return Task.CompletedTask; }
+        private static Task HandleMouseUp(IWebSocketConnection s, JsonElement r) { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; InputService.MouseToggle(btn, false); Logger.Log("MOUSE", $"{btn} up", ConsoleColor.Green); return Task.CompletedTask; }
+        private static Task HandleMouseClick(IWebSocketConnection s, JsonElement r) { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; Logger.Log("MOUSE", $"{btn} click", ConsoleColor.Green); return InputService.MouseClick(btn); }
+        private static Task HandleTypeText(IWebSocketConnection s, JsonElement r) { var text = r.TryGetProperty("text", out var txt) ? (txt.GetString() ?? "") : ""; InputService.TypeText(text); Logger.Log("TYPE", $"{text.Length} char(s)", ConsoleColor.Green); return Task.CompletedTask; }
+        private static Task HandleKeyPress(IWebSocketConnection s, JsonElement r)
+        {
+            var key = r.GetProperty("key").GetString();
+            if (key == "enter") { Logger.Log("KEY", "enter", ConsoleColor.Green); return InputService.KeyboardKey(InputService.VK_RETURN); }
+            else if (key == "backspace") { Logger.Log("KEY", "backspace", ConsoleColor.Green); return InputService.KeyboardKey(InputService.VK_BACK); }
+            return Task.CompletedTask;
+        }
+
+        private static Task HandlePower(IWebSocketConnection s, JsonElement r)
+        {
+            var action = r.GetProperty("action").GetString() ?? "";
+            var seconds = r.TryGetProperty("seconds", out var secs) ? secs.GetInt32() : 0;
+            if (action == "cancel") seconds = 0;
+            Logger.Log("POWER", seconds > 0 ? $"{action} in {seconds}s" : action, ConsoleColor.Red);
+            PowerService.HandleCommand(action, seconds);
+            return Task.CompletedTask;
+        }
+        
+        #endregion
 
         public static void Broadcast(string msg)
         {

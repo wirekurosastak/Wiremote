@@ -21,12 +21,15 @@
         <details class="card-dropdown" open>
             <summary>MEDIA</summary>
 
-            <!-- Now Playing (hidden until a session is active) -->
-            <div id="nowPlayingCard" style="display: none;">
-                <div class="np-row">
+            <!-- Now Playing Area -->
+            <div id="nowPlayingCard">
+                <div id="npEmpty" style="display: flex; justify-content: center; align-items: center; height: 64px; color: var(--secondary); font-weight: 600; font-size: 15px;">
+                    Nothing there...
+                </div>
+                <div class="np-row" id="npContent" style="display: none;">
                     <div class="np-art" id="npArt">🎵</div>
                     <div class="np-meta">
-                        <div class="np-title" id="npTitle">—</div>
+                        <div class="np-title" id="npTitle">Unknown</div>
                         <div class="np-artist" id="npArtist"></div>
                         <div class="np-status" id="npStatus"></div>
                     </div>
@@ -44,64 +47,67 @@
             </div>
         </details>
 
-        <!-- AUDIO (Master Volume + Output Device + App Volume) -->
+        <!-- AUDIO & DISPLAY -->
         <details class="card-dropdown" open>
-            <summary>AUDIO</summary>
+            <summary id="audioDisplayTabs">
+                <div style="display: flex; gap: 8px; align-items: center;">
+                    <span id="tabAudio" style="text-decoration: underline; cursor: pointer; text-underline-offset: 4px; padding: 4px 8px; margin-left: -8px;">AUDIO</span>
+                    <span style="opacity: 0.4; font-weight: 300;">/</span>
+                    <span id="tabDisplay" style="cursor: pointer; opacity: 0.6; text-underline-offset: 4px; padding: 4px 8px;">DISPLAY</span>
+                </div>
+            </summary>
 
-            <!-- Master Volume -->
-            <div class="master-vol-row">
-                <input id="slider" type="range" min="0" max="100" value="50">
-                <div class="volume-number" id="volumeDisplay">--%</div>
+            <!-- AUDIO CONTENT -->
+            <div id="contentAudio">
+                <!-- Master Volume -->
+                <div class="master-vol-row">
+                    <input id="slider" type="range" min="0" max="100" value="50">
+                    <div class="volume-number" id="volumeDisplay">--%</div>
+                </div>
+
+                <hr class="card-divider">
+
+                <!-- Output Device -->
+                <details class="dropdown-details">
+                    <summary>Output Device</summary>
+                    <div id="deviceList" class="device-list"><div class="hint">…</div></div>
+                </details>
+
+                <!-- Volume Mixer -->
+                <details class="dropdown-details" style="margin-bottom: 0;">
+                    <summary>Volume Mixer</summary>
+                    <div id="sessionList" class="session-list"><div class="hint">No active apps</div></div>
+                </details>
             </div>
 
-            <hr class="card-divider">
+            <!-- DISPLAY CONTENT -->
+            <div id="contentDisplay" style="display: none;">
+                <div class="master-vol-row" id="brightnessContainer" style="display: none;">
+                    <div class="brightness-icon">☀️</div>
+                    <input id="brightnessSlider" type="range" min="0" max="100" value="50">
+                    <div class="volume-number" id="brightnessDisplay">--%</div>
+                </div>
 
-            <!-- Output Device -->
-            <details class="dropdown-details">
-                <summary>Output Device</summary>
-                <div id="deviceList" class="device-list"><div class="hint">…</div></div>
-            </details>
+                <hr class="card-divider" id="brightnessDivider" style="display: none;">
+                
+                <details class="dropdown-details" style="margin-bottom: 12px; margin-top: 8px;">
+                    <summary>Monitors</summary>
+                    <div id="displayList" class="device-list"><div class="hint">…</div></div>
+                </details>
 
-            <!-- Volume Mixer -->
-            <details class="dropdown-details" style="margin-bottom: 0;">
-                <summary>Volume Mixer</summary>
-                <div id="sessionList" class="session-list"><div class="hint">No active apps</div></div>
-            </details>
-        </details>
-
-        <!-- DISPLAY -->
-        <details class="card-dropdown" open id="displayCard">
-            <summary>DISPLAY</summary>
-            
-            <div class="master-vol-row" id="brightnessContainer" style="display: none;">
-                <div class="brightness-icon">☀️</div>
-                <input id="brightnessSlider" type="range" min="0" max="100" value="50">
-                <div class="volume-number" id="brightnessDisplay">--%</div>
+                <details class="dropdown-details" style="margin-bottom: 12px;">
+                    <summary>Main Monitor</summary>
+                    <select id="primaryMonitorSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;"></select>
+                </details>
+                <details class="dropdown-details" style="margin-bottom: 0;">
+                    <summary>Mode</summary>
+                    <select id="projectionModeSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;">
+                        <option value="" disabled selected>Mode</option>
+                        <option value="extend">Extend</option>
+                        <option value="clone">Clone</option>
+                    </select>
+                </details>
             </div>
-
-            <hr class="card-divider" id="brightnessDivider" style="display: none;">
-            
-            <details class="dropdown-details" open style="margin-bottom: 12px; margin-top: 8px;">
-                <summary>Monitors</summary>
-                <div id="displayList" class="device-list"><div class="hint">…</div></div>
-            </details>
-
-            <details class="dropdown-details" open style="margin-bottom: 12px;">
-                <summary>Main Monitor Selector</summary>
-                <select id="primaryMonitorSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;"></select>
-            </details>
-    
-            <div style="font-size: 12px; color: var(--secondary); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px;">Projection Mode</div>
-            <details class="dropdown-details" open style="margin-bottom: 12px;">
-                <summary>Mode Selector</summary>
-                <select id="projectionModeSelect" style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;">
-                    <option value="" disabled selected>Select Mode</option>
-                    <option value="extend">Extend</option>
-                    <option value="clone">Clone</option>
-                    <option value="internal">Internal Only</option>
-                    <option value="external">External Only</option>
-                </select>
-            </details>
         </details>
 
         <!-- CONTROLS -->
@@ -154,6 +160,6 @@
 
     </div>
 
-    <script src="app.js?v=4"></script>
+    <script src="app.js?v=14"></script>
 </body>
 </html>

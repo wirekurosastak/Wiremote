@@ -14,19 +14,29 @@ namespace PCRemote
             {
                 var query = new WqlEventQuery("SELECT * FROM __InstanceModificationEvent WITHIN 2 WHERE TargetInstance ISA 'WmiMonitorBrightness'");
                 _watcher = new ManagementEventWatcher(new ManagementScope("root\\WMI"), query);
-                _watcher.EventArrived += (s, e) =>
-                {
-                    if (e.NewEvent.Properties["TargetInstance"]?.Value is ManagementBaseObject mo)
-                    {
-                        var val = Convert.ToInt32(mo["CurrentBrightness"]);
-                        Server.Broadcast(JsonSerializer.Serialize(new { type = "brightness", supported = true, value = val }));
-                    }
-                };
+                _watcher.EventArrived += OnBrightnessChanged;
                 _watcher.Start();
             }
             catch (Exception ex)
             {
-                Logger.Log("BRIGHT", $"Watcher init failed: {ex.Message}", ConsoleColor.DarkGray);
+                // Asztali gépeken gyakran nincs WmiMonitorBrightness, ez nem feltétlen kritikus hiba.
+                Logger.Log("BRIGHT", $"Watcher init skipped (Not supported or error): {ex.Message}", ConsoleColor.DarkGray);
+            }
+        }
+
+        private static void OnBrightnessChanged(object sender, EventArrivedEventArgs e)
+        {
+            try
+            {
+                if (e.NewEvent.Properties["TargetInstance"]?.Value is ManagementBaseObject mo)
+                {
+                    var val = Convert.ToInt32(mo["CurrentBrightness"]);
+                    Server.Broadcast(JsonSerializer.Serialize(new { type = "brightness", supported = true, value = val }));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log("BRIGHT", $"Event parse failed: {ex.Message}", ConsoleColor.Red);
             }
         }
 
@@ -34,17 +44,22 @@ namespace PCRemote
         {
             try
             {
-                using var searcher = new ManagementObjectSearcher(
-                    "root\\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
+                using var searcher = new ManagementObjectSearcher("root\\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
                 foreach (ManagementObject o in searcher.Get())
                 {
                     using (o)
+                    {
                         return (true, Convert.ToInt32(o["CurrentBrightness"]));
+                    }
                 }
+            }
+            catch (ManagementException)
+            {
+                // Nincs WMI fényerő támogatás (pl. asztali monitor)
             }
             catch (Exception ex)
             {
-                Logger.Log("BRIGHT", $"GetBrightness unsupported: {ex.Message}", ConsoleColor.DarkGray);
+                Logger.Log("BRIGHT", $"GetBrightness error: {ex.Message}", ConsoleColor.DarkGray);
             }
             return (false, 0);
         }
@@ -54,12 +69,13 @@ namespace PCRemote
             percent = Math.Max(0, Math.Min(100, percent));
             try
             {
-                using var searcher = new ManagementObjectSearcher(
-                    "root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
+                using var searcher = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
                 foreach (ManagementObject o in searcher.Get())
                 {
                     using (o)
+                    {
                         o.InvokeMethod("WmiSetBrightness", new object[] { (uint)1, (byte)percent });
+                    }
                 }
             }
             catch (Exception ex)
@@ -72,7 +88,29 @@ namespace PCRemote
         {
             var (supported, value) = GetBrightness();
             var msg = JsonSerializer.Serialize(new { type = "brightness", supported, value });
-            try { socket.Send(msg); } catch { }
+            try { socket.Send(msg); } catch (Exception ex) { Logger.Log("BRIGHT", $"WS send error: {ex.Message}", ConsoleColor.Red); }
+        }
+
+        // ÚJ: Memóriaszivárgás megelőzése
+        public static void Cleanup()
+        {
+            if (_watcher != null)
+            {
+                try
+                {
+                    _watcher.Stop();
+                    _watcher.EventArrived -= OnBrightnessChanged;
+                    _watcher.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Log("BRIGHT", $"Cleanup error: {ex.Message}", ConsoleColor.Red);
+                }
+                finally
+                {
+                    _watcher = null;
+                }
+            }
         }
     }
 }

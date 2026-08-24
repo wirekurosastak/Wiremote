@@ -5,6 +5,9 @@ namespace PCRemote
 {
     public static class InputService
     {
+        public enum MouseButton { Left, Right, Middle }
+
+        #region P/Invoke Structures
         [StructLayout(LayoutKind.Sequential)]
         struct MOUSEINPUT
         {
@@ -36,7 +39,9 @@ namespace PCRemote
         const uint KEYEVENTF_EXTENDEDKEY = 0x0001; const uint KEYEVENTF_KEYUP = 0x0002; const uint KEYEVENTF_UNICODE = 0x0004;
         const uint MOUSEEVENTF_MOVE = 0x0001; const uint MOUSEEVENTF_LEFTDOWN = 0x0002; const uint MOUSEEVENTF_LEFTUP = 0x0004;
         const uint MOUSEEVENTF_RIGHTDOWN = 0x0008; const uint MOUSEEVENTF_RIGHTUP = 0x0010; const uint MOUSEEVENTF_WHEEL = 0x0800;
+        #endregion
 
+        #region Virtual Keys
         public const ushort VK_MEDIA_NEXT_TRACK = 0xB0;
         public const ushort VK_MEDIA_PREV_TRACK = 0xB1;
         public const ushort VK_MEDIA_PLAY_PAUSE = 0xB3;
@@ -44,6 +49,10 @@ namespace PCRemote
         public const ushort VK_RIGHT = 0x27;
         public const ushort VK_RETURN = 0x0D;
         public const ushort VK_BACK = 0x08;
+        #endregion
+
+        class MouseAccumulator { public double X; public double Y; }
+        static readonly ConcurrentDictionary<Guid, MouseAccumulator> _mouseAcc = new();
 
         public static async Task KeyboardKey(ushort key, bool extended = false)
         {
@@ -70,9 +79,6 @@ namespace PCRemote
             SendInput((uint)inputs.Length, inputs, Marshal.SizeOf<INPUT>());
         }
 
-        class MouseAccumulator { public double X; public double Y; }
-        static readonly ConcurrentDictionary<Guid, MouseAccumulator> _mouseAcc = new();
-
         public static void MouseMove(Guid sessionId, double dx, double dy)
         {
             var acc = _mouseAcc.GetOrAdd(sessionId, _ => new MouseAccumulator());
@@ -97,21 +103,32 @@ namespace PCRemote
             SendInput(1, new[] { inp }, Marshal.SizeOf<INPUT>());
         }
 
-        public static async Task MouseClick(string button = "left")
+        private static MouseButton ParseButton(string button) => button.ToLower() switch
         {
-            uint down = button == "right" ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN;
-            uint up = button == "right" ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP;
+            "right" => MouseButton.Right,
+            "middle" => MouseButton.Middle,
+            _ => MouseButton.Left
+        };
+
+        public static async Task MouseClick(string buttonStr = "left")
+        {
+            var button = ParseButton(buttonStr);
+            uint down = button == MouseButton.Right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN;
+            uint up = button == MouseButton.Right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP;
 
             var inpDown = new INPUT { type = INPUT_MOUSE, u = new INPUT_UNION { mi = new MOUSEINPUT { dwFlags = down } } };
             SendInput(1, new[] { inpDown }, Marshal.SizeOf<INPUT>());
+            
             await Task.Delay(30);
+            
             var inpUp = new INPUT { type = INPUT_MOUSE, u = new INPUT_UNION { mi = new MOUSEINPUT { dwFlags = up } } };
             SendInput(1, new[] { inpUp }, Marshal.SizeOf<INPUT>());
         }
 
-        public static void MouseToggle(string button, bool isDown)
+        public static void MouseToggle(string buttonStr, bool isDown)
         {
-            uint flag = button == "right"
+            var button = ParseButton(buttonStr);
+            uint flag = button == MouseButton.Right
                 ? (isDown ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP)
                 : (isDown ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP);
 

@@ -19,6 +19,7 @@ namespace PCRemote
                 Console.WriteLine("Warning: Not running as Administrator! If you cannot connect, run as Administrator once to configure firewall rules.");
                 Console.ResetColor();
             }
+
             Fleck.FleckLog.LogAction = (level, msg, ex) =>
             {
                 if (level >= Fleck.LogLevel.Warn && !msg.Contains("Data sent while closing"))
@@ -51,12 +52,16 @@ namespace PCRemote
             _ = Server.StartHttpServer(cts.Token);
             Server.StartWebSocketServer();
 
-            try { await Task.Delay(-1, cts.Token); } catch (TaskCanceledException) { }
+            try { await Task.Delay(-1, cts.Token); } 
+            catch (TaskCanceledException) { }
 
             Console.WriteLine("\nExiting...");
             Server.Stop();
+            
+            // Tisztességes erőforrás-felszabadítás
             AudioService.Cleanup();
             PowerService.Cleanup();
+            BrightnessService.Cleanup(); // Hozzáadva a WMI szivárgások miatt
         }
 
         static bool IsAdministrator()
@@ -76,39 +81,34 @@ namespace PCRemote
                     p?.WaitForExit();
                 }
 
-                RunCmd("http delete urlacl url=http://*:8765/");
-                RunCmd("http add urlacl url=http://*:8765/ user=Everyone");
+                RunCmd($"http delete urlacl url=http://*:{Server.HTTP_PORT}/");
+                RunCmd($"http add urlacl url=http://*:{Server.HTTP_PORT}/ user=Everyone");
                 
-                RunCmd("advfirewall firewall delete rule name=\"RemoteControl HTTP 8765\"");
-                RunCmd("advfirewall firewall add rule name=\"RemoteControl HTTP 8765\" dir=in action=allow protocol=TCP localport=8765");
+                RunCmd($"advfirewall firewall delete rule name=\"RemoteControl HTTP {Server.HTTP_PORT}\"");
+                RunCmd($"advfirewall firewall add rule name=\"RemoteControl HTTP {Server.HTTP_PORT}\" dir=in action=allow protocol=TCP localport={Server.HTTP_PORT}");
 
-                RunCmd("advfirewall firewall delete rule name=\"RemoteControl WS 8766\"");
-                RunCmd("advfirewall firewall add rule name=\"RemoteControl WS 8766\" dir=in action=allow protocol=TCP localport=8766");
+                RunCmd($"advfirewall firewall delete rule name=\"RemoteControl WS {Server.WS_PORT}\"");
+                RunCmd($"advfirewall firewall add rule name=\"RemoteControl WS {Server.WS_PORT}\" dir=in action=allow protocol=TCP localport={Server.WS_PORT}");
             }
             catch { }
         }
 
         static string GetLocalIp()
         {
-            foreach (var nic in NetworkInterface.GetAllNetworkInterfaces())
+            var ipv4Addresses = NetworkInterface.GetAllNetworkInterfaces()
+                .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
+                .SelectMany(n => n.GetIPProperties().UnicastAddresses)
+                .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
+                .Select(a => a.Address);
+
+            foreach (var ip in ipv4Addresses)
             {
-                if (nic.OperationalStatus != OperationalStatus.Up) continue;
-                if (nic.NetworkInterfaceType == NetworkInterfaceType.Loopback) continue;
+                var bytes = ip.GetAddressBytes();
+                bool isPrivate = bytes[0] == 10 ||
+                                (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
+                                (bytes[0] == 192 && bytes[1] == 168);
 
-                foreach (var addr in nic.GetIPProperties().UnicastAddresses)
-                {
-                    if (addr.Address.AddressFamily != AddressFamily.InterNetwork) continue;
-
-                    var ip = addr.Address;
-                    var bytes = ip.GetAddressBytes();
-
-                    bool isPrivate =
-                        bytes[0] == 10 ||
-                        (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
-                        (bytes[0] == 192 && bytes[1] == 168);
-
-                    if (isPrivate) return ip.ToString();
-                }
+                if (isPrivate) return ip.ToString();
             }
             return "127.0.0.1";
         }

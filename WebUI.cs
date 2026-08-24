@@ -1,15 +1,27 @@
+using System.Collections.Concurrent;
 using System.Reflection;
 
 namespace PCRemote
 {
     public static class WebUI
     {
+        // Thread-safe memória cache a statikus fájlokhoz
+        private static readonly ConcurrentDictionary<string, (byte[] content, string contentType)?> _resourceCache = new();
+
         public static (byte[] content, string contentType)? GetStaticResource(string path)
         {
             string fileName = path.TrimStart('/');
             if (string.IsNullOrEmpty(fileName) || fileName == "index.html")
+            {
                 fileName = "index.html";
+            }
 
+            // Csak akkor olvassa lemezről/assembly-ből, ha még nincs a cache-ben
+            return _resourceCache.GetOrAdd(fileName, LoadResourceFromAssembly);
+        }
+
+        private static (byte[] content, string contentType)? LoadResourceFromAssembly(string fileName)
+        {
             string resourceName = $"PCRemote.wwwroot.{fileName.Replace('/', '.')}";
             var assembly = Assembly.GetExecutingAssembly();
 

@@ -3,18 +3,19 @@ using System.Diagnostics.Eventing.Reader;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Win32;
+using Fleck;
 
 namespace PCRemote
 {
     public static class PowerService
     {
-        static EventLogWatcher? shutdownEventWatcher;
-        static readonly object powerLock = new object();
+        static EventLogWatcher? _shutdownEventWatcher;
+        static readonly object _powerLock = new object();
         static DateTime? _lastCancelTime = null;
+        static CancellationTokenSource? _timerCts;
+
         public static string? ActiveAction { get; private set; }
         public static DateTime? TargetTime { get; private set; }
-
-        static CancellationTokenSource? _timerCts;
 
         public static void Init()
         {
@@ -22,10 +23,10 @@ namespace PCRemote
             {
                 SystemEvents.SessionEnding += OnSessionEnding;
                 var query = new EventLogQuery("System", PathType.LogName, "*[System[(EventID=1075)]]");
-                shutdownEventWatcher = new EventLogWatcher(query);
-                shutdownEventWatcher.EventRecordWritten += (s, e) =>
+                _shutdownEventWatcher = new EventLogWatcher(query);
+                _shutdownEventWatcher.EventRecordWritten += (s, e) =>
                 {
-                    lock (powerLock)
+                    lock (_powerLock)
                     {
                         if (ActiveAction == "shutdown" || ActiveAction == "restart")
                         {
@@ -36,7 +37,7 @@ namespace PCRemote
                         }
                     }
                 };
-                shutdownEventWatcher.Enabled = true;
+                _shutdownEventWatcher.Enabled = true;
             }
             catch (Exception ex)
             {
@@ -47,12 +48,12 @@ namespace PCRemote
         private static void OnSessionEnding(object sender, SessionEndingEventArgs e)
         {
             Logger.Log("POWER", $"OS Session ending ({e.Reason})", ConsoleColor.Yellow);
-            lock (powerLock) { ClearState(); }
+            lock (_powerLock) { ClearState(); }
         }
 
         public static void HandleCommand(string action, int seconds)
         {
-            lock (powerLock)
+            lock (_powerLock)
             {
                 _timerCts?.Cancel();
                 _timerCts?.Dispose();
@@ -81,7 +82,7 @@ namespace PCRemote
                     }
                     else
                     {
-                        // Sleep/Hibernate need custom timer
+                        // Sleep/Hibernate custom timer
                         _timerCts = new CancellationTokenSource();
                         _ = FallbackTimer(action, TargetTime.Value, _timerCts.Token);
                     }
@@ -96,18 +97,22 @@ namespace PCRemote
             }
         }
 
-        private static async System.Threading.Tasks.Task FallbackTimer(string action, DateTime target, CancellationToken token)
+        private static async Task FallbackTimer(string action, DateTime target, CancellationToken token)
         {
             var delay = target - DateTime.UtcNow;
             if (delay.TotalMilliseconds > 0)
             {
-
-                try { await System.Threading.Tasks.Task.Delay(delay, token); }
-                catch (TaskCanceledException) { return; }
-
+                try 
+                { 
+                    await Task.Delay(delay, token); 
+                }
+                catch (TaskCanceledException) 
+                { 
+                    return; 
+                }
             }
 
-            lock (powerLock)
+            lock (_powerLock)
             {
                 if (ActiveAction == action && TargetTime == target)
                 {
@@ -132,14 +137,14 @@ namespace PCRemote
             Server.Broadcast(msg);
         }
 
-        public static void SendInitialState(Fleck.IWebSocketConnection socket)
+        public static void SendInitialState(IWebSocketConnection socket)
         {
             if (ActiveAction != null && TargetTime.HasValue)
             {
                 long ms = new DateTimeOffset(TargetTime.Value).ToUnixTimeMilliseconds();
                 int rem = (int)(TargetTime.Value - DateTime.UtcNow).TotalSeconds;
                 var msg = JsonSerializer.Serialize(new { type = "timer", targetMs = ms, remaining = rem, action = ActiveAction });
-                try { socket.Send(msg); } catch { }
+                try { socket.Send(msg); } catch (Exception ex) { Logger.Log("POWER", $"WS send error: {ex.Message}", ConsoleColor.Red); }
             }
         }
 
@@ -168,8 +173,31 @@ namespace PCRemote
         public static void Cleanup()
         {
             SystemEvents.SessionEnding -= OnSessionEnding;
-            try { shutdownEventWatcher?.Dispose(); } catch { }
-            try { _timerCts?.Cancel(); _timerCts?.Dispose(); } catch { }
+            
+            if (_shutdownEventWatcher != null)
+            {
+                try 
+                {
+                    _shutdownEventWatcher.Enabled = false;
+                    _shutdownEventWatcher.Dispose(); 
+                } 
+                catch (Exception ex) 
+                { 
+                    Logger.Log("POWER", $"Watcher cleanup error: {ex.Message}", ConsoleColor.Red);
+                }
+                finally { _shutdownEventWatcher = null; }
+            }
+
+            if (_timerCts != null)
+            {
+                try 
+                { 
+                    _timerCts.Cancel(); 
+                    _timerCts.Dispose(); 
+                } 
+                catch { }
+                finally { _timerCts = null; }
+            }
         }
     }
 }

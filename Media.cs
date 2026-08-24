@@ -21,13 +21,18 @@ namespace PCRemote
             try
             {
                 _mediaManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-                _mediaManager.CurrentSessionChanged += (s, e) => OnCurrentMediaSessionChanged();
+                _mediaManager.CurrentSessionChanged += OnCurrentMediaSessionChangedEvent;
                 OnCurrentMediaSessionChanged();
             }
             catch (Exception ex)
             {
                 Logger.Log("MEDIA", $"Now-Playing init failed: {ex.Message}", ConsoleColor.Red);
             }
+        }
+
+        static void OnCurrentMediaSessionChangedEvent(GlobalSystemMediaTransportControlsSessionManager sender, CurrentSessionChangedEventArgs args)
+        {
+            OnCurrentMediaSessionChanged();
         }
 
         static void OnCurrentMediaSessionChanged()
@@ -92,7 +97,7 @@ namespace PCRemote
             }
             catch (Exception ex)
             {
-                Logger.Log("MEDIA", $"build failed: {ex.Message}", ConsoleColor.Red);
+                Logger.Log("MEDIA", $"build json failed: {ex.Message}", ConsoleColor.Red);
                 return JsonSerializer.Serialize(new { type = "nowplaying", playing = false });
             }
         }
@@ -106,7 +111,7 @@ namespace PCRemote
                 uint size = (uint)stream.Size;
                 if (size == 0 || size > 2_000_000) return null;
 
-                using var reader = new DataReader(stream);
+                using var reader = new DataReader(stream.GetInputStreamAt(0));
                 await reader.LoadAsync(size);
                 var bytes = new byte[size];
                 reader.ReadBytes(bytes);
@@ -115,8 +120,9 @@ namespace PCRemote
                     ? "image/jpeg" : "image/png";
                 return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
             }
-            catch
+            catch (Exception ex)
             {
+                Logger.Log("MEDIA", $"Thumbnail read error: {ex.Message}", ConsoleColor.DarkGray);
                 return null;
             }
         }
@@ -204,6 +210,30 @@ namespace PCRemote
         {
             var json = await BuildNowPlayingJsonAsync();
             try { _ = socket.Send(json); } catch { }
+        }
+
+        // ÚJ: Eseménykezelők leválasztása a szivárgás ellen
+        public static void Cleanup()
+        {
+            try
+            {
+                if (_mediaSession != null)
+                {
+                    _mediaSession.MediaPropertiesChanged -= _mediaPropsHandler;
+                    _mediaSession.PlaybackInfoChanged -= _mediaPlaybackHandler;
+                    _mediaSession = null;
+                }
+                
+                if (_mediaManager != null)
+                {
+                    _mediaManager.CurrentSessionChanged -= OnCurrentMediaSessionChangedEvent;
+                    _mediaManager = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Log("MEDIA", $"Cleanup error: {ex.Message}", ConsoleColor.DarkGray);
+            }
         }
     }
 }

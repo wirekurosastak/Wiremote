@@ -4,13 +4,20 @@ namespace PCRemote
 {
     public static class Interop
     {
-        public enum ERole { eConsole = 0, eMultimedia = 1, eCommunications = 2 }
+        #region Core Audio Policy Config (COM)
+        
+        public enum ERole 
+        { 
+            eConsole = 0, 
+            eMultimedia = 1, 
+            eCommunications = 2 
+        }
 
         [ComImport, Guid("870af99c-171d-4f9e-af0d-e63df40c2bc9")]
         public class CPolicyConfigClient { }
 
-        [ComImport, Guid("f8679f50-850a-41cf-9c72-430f290290c8"),
-         InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        [ComImport, Guid("f8679f50-850a-41cf-9c72-430f290290c8")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         public interface IPolicyConfig
         {
             [PreserveSig] int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string dev, IntPtr fmt);
@@ -26,11 +33,17 @@ namespace PCRemote
             [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string dev, ERole role);
             [PreserveSig] int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string dev, bool visible);
         }
+        
+        #endregion
 
+        #region Windows User32 & Kernel32 API
+        
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("kernel32.dll")]
         public static extern IntPtr GetConsoleWindow();
+        
+        #endregion
     }
 }

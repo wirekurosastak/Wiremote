@@ -66,28 +66,52 @@ namespace PCRemote
             return (false, 0);
         }
 
-        static ManagementObjectSearcher? _setBrightnessSearcher;
+        private static readonly object _setLock = new object();
+        private static int _targetBrightness = -1;
+        private static bool _isProcessingSet = false;
 
         public static void SetBrightness(int percent)
         {
             percent = Math.Max(0, Math.Min(100, percent));
+            lock (_setLock)
+            {
+                _targetBrightness = percent;
+                if (_isProcessingSet) return;
+                _isProcessingSet = true;
+            }
+
             Task.Run(() =>
             {
-                try
+                while (true)
                 {
-                    _setBrightnessSearcher ??= new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
-                    using var collection = _setBrightnessSearcher.Get();
-                    foreach (ManagementObject o in collection)
+                    int val;
+                    lock (_setLock)
                     {
-                        using (o)
+                        if (_targetBrightness < 0)
                         {
-                            o.InvokeMethod("WmiSetBrightness", new object[] { (uint)1, (byte)percent });
+                            _isProcessingSet = false;
+                            break;
+                        }
+                        val = _targetBrightness;
+                        _targetBrightness = -1;
+                    }
+
+                    try
+                    {
+                        using var searcher = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
+                        using var collection = searcher.Get();
+                        foreach (ManagementObject o in collection)
+                        {
+                            using (o)
+                            {
+                                o.InvokeMethod("WmiSetBrightness", new object[] { (uint)1, (byte)val });
+                            }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    Logger.Log("BRIGHT", $"SetBrightness failed: {ex.Message}", ConsoleColor.Red);
+                    catch (Exception ex)
+                    {
+                        Logger.Log("BRIGHT", $"SetBrightness failed: {ex.Message}", ConsoleColor.Red);
+                    }
                 }
             });
         }
@@ -118,12 +142,6 @@ namespace PCRemote
                 {
                     _watcher = null;
                 }
-            }
-
-            if (_setBrightnessSearcher != null)
-            {
-                try { _setBrightnessSearcher.Dispose(); } catch { }
-                finally { _setBrightnessSearcher = null; }
             }
         }
 

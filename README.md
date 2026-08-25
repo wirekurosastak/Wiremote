@@ -1,4 +1,4 @@
-# PCRemote
+# Wiremote
 
 A fast, pragmatic, and lightweight Windows PC remote-control web UI. Designed primarily for controlling media playback from a smartphone.
 

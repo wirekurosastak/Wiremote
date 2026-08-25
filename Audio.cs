@@ -126,7 +126,7 @@ namespace PCRemote
         static void RegisterAllSessions(AudioSessionManager mgr)
         {
             mgr.RefreshSessions();
-            var sessions = mgr.Sessions;
+            using var sessions = mgr.Sessions;
             for (int i = 0; i < sessions.Count; i++)
             {
                 var s = sessions[i];
@@ -431,7 +431,7 @@ namespace PCRemote
                 } 
                 catch (Exception ex) { Logger.Log("DEVICE", $"DefDevice get failed: {ex.Message}", ConsoleColor.DarkGray); }
 
-                var devices = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
+                using var devices = _enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active);
                 for (int i = 0; i < devices.Count; i++)
                 {
                     try
@@ -456,7 +456,7 @@ namespace PCRemote
             catch (Exception ex) { Logger.Log("WS", $"SendDevices failed: {ex.Message}", ConsoleColor.DarkGray); } 
         }
 
-        public static async void SetDefaultDevice(string deviceId)
+        public static async Task SetDefaultDevice(string deviceId)
         {
             if (string.IsNullOrEmpty(deviceId)) return;
             try
@@ -473,8 +473,15 @@ namespace PCRemote
                 return;
             }
 
-            await Task.Delay(100);
-            ReacquireDefaultDevice();
+            try
+            {
+                await Task.Delay(100);
+                ReacquireDefaultDevice();
+            }
+            catch (Exception ex)
+            {
+                Logger.Log("DEVICE", $"ReacquireDefaultDevice failed after SetDefaultDevice: {ex.Message}", ConsoleColor.Red);
+            }
         }
 
         public static void SendInitialState(IWebSocketConnection socket)
@@ -517,7 +524,7 @@ namespace PCRemote
             Server.RegisterCommand("set_session_volume", (s, r) => { var id = (uint)r.GetProperty("id").GetInt64(); int val = r.GetProperty("value").GetInt32(); SetSessionVolume(id, val); Logger.Log("APPVOL", $"pid {id} → {val}%", ConsoleColor.Yellow); return Task.CompletedTask; });
             Server.RegisterCommand("session_mute", (s, r) => { var id = (uint)r.GetProperty("id").GetInt64(); bool m = ToggleSessionMute(id); BroadcastSessions(); Logger.Log("APPVOL", $"pid {id} {(m ? "muted" : "unmuted")}", ConsoleColor.Yellow); return Task.CompletedTask; });
             Server.RegisterCommand("get_devices", (s, r) => { SendDevices(s); return Task.CompletedTask; });
-            Server.RegisterCommand("set_device", (s, r) => { var id = r.GetProperty("id").GetString() ?? ""; SetDefaultDevice(id); Logger.Log("DEVICE", "switched output", ConsoleColor.Cyan); return Task.CompletedTask; });
+            Server.RegisterCommand("set_device", (s, r) => { var id = r.GetProperty("id").GetString() ?? ""; _ = SetDefaultDevice(id); Logger.Log("DEVICE", "switched output", ConsoleColor.Cyan); return Task.CompletedTask; });
         }
     }
 }

@@ -20,6 +20,7 @@ namespace PCRemote
         [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
         public interface IPolicyConfig
         {
+            // Slots 1-10 preserve exact COM IUnknown vtable layout alignment leading to SetDefaultEndpoint (slot 11)
             [PreserveSig] int GetMixFormat([MarshalAs(UnmanagedType.LPWStr)] string dev, IntPtr fmt);
             [PreserveSig] int GetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string dev, bool def, IntPtr fmt);
             [PreserveSig] int ResetDeviceFormat([MarshalAs(UnmanagedType.LPWStr)] string dev);
@@ -31,7 +32,6 @@ namespace PCRemote
             [PreserveSig] int GetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string dev, bool store, IntPtr key, IntPtr val);
             [PreserveSig] int SetPropertyValue([MarshalAs(UnmanagedType.LPWStr)] string dev, bool store, IntPtr key, IntPtr val);
             [PreserveSig] int SetDefaultEndpoint([MarshalAs(UnmanagedType.LPWStr)] string dev, ERole role);
-            [PreserveSig] int SetEndpointVisibility([MarshalAs(UnmanagedType.LPWStr)] string dev, bool visible);
         }
         
         #endregion
@@ -40,9 +40,6 @@ namespace PCRemote
         
         [DllImport("user32.dll", CharSet = CharSet.Auto)]
         public static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
-
-        [DllImport("kernel32.dll")]
-        public static extern IntPtr GetConsoleWindow();
         
         #endregion
     }

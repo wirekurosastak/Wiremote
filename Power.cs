@@ -29,7 +29,7 @@ namespace PCRemote
                 {
                     lock (_powerLock)
                     {
-                        if (ActiveAction == "shutdown" || ActiveAction == "restart")
+                        if (ActiveAction == "shutdown" || ActiveAction == "restart" || ActiveAction == "restart_bios")
                         {
                             if (_lastCancelTime.HasValue && (DateTime.UtcNow - _lastCancelTime.Value).TotalSeconds < 3) return;
                             Logger.Log("POWER", "OS shutdown cancelled externally (Event 1075)", ConsoleColor.Yellow);
@@ -61,7 +61,7 @@ namespace PCRemote
                 _timerCts?.Dispose();
                 _timerCts = null;
 
-                if (ActiveAction == "shutdown" || ActiveAction == "restart" || action == "cancel")
+                if (ActiveAction == "shutdown" || ActiveAction == "restart" || ActiveAction == "restart_bios" || action == "cancel")
                 {
                     _lastCancelTime = DateTime.UtcNow;
                     ExecutePowerAction("cancel");
@@ -78,7 +78,7 @@ namespace PCRemote
                 {
                     ActiveAction = action;
                     TargetTime = DateTime.UtcNow.AddSeconds(seconds);
-                    if (action == "shutdown" || action == "restart")
+                    if (action == "shutdown" || action == "restart" || action == "restart_bios")
                     {
                         ExecutePowerAction(action, seconds);
                     }
@@ -141,12 +141,15 @@ namespace PCRemote
 
         public static void SendInitialState(IWebSocketConnection socket)
         {
-            if (ActiveAction != null && TargetTime.HasValue)
+            lock (_powerLock)
             {
-                long ms = new DateTimeOffset(TargetTime.Value).ToUnixTimeMilliseconds();
-                int rem = (int)(TargetTime.Value - DateTime.UtcNow).TotalSeconds;
-                var msg = JsonSerializer.Serialize(new { type = "timer", targetMs = ms, remaining = rem, action = ActiveAction });
-                try { socket.Send(msg); } catch (Exception ex) { Logger.Log("POWER", $"WS send error: {ex.Message}", ConsoleColor.Red); }
+                if (ActiveAction != null && TargetTime.HasValue)
+                {
+                    long ms = new DateTimeOffset(TargetTime.Value).ToUnixTimeMilliseconds();
+                    int rem = (int)(TargetTime.Value - DateTime.UtcNow).TotalSeconds;
+                    var msg = JsonSerializer.Serialize(new { type = "timer", targetMs = ms, remaining = rem, action = ActiveAction });
+                    try { socket.Send(msg); } catch (Exception ex) { Logger.Log("POWER", $"WS send error: {ex.Message}", ConsoleColor.Red); }
+                }
             }
         }
 
@@ -161,6 +164,7 @@ namespace PCRemote
                 {
                     case "shutdown": Process.Start(new ProcessStartInfo("shutdown", $"/s /f /t {seconds}") { CreateNoWindow = true }); break;
                     case "restart": Process.Start(new ProcessStartInfo("shutdown", $"/r /f /t {seconds}") { CreateNoWindow = true }); break;
+                    case "restart_bios": Process.Start(new ProcessStartInfo("shutdown", $"/r /fw /f /t {seconds}") { CreateNoWindow = true }); break;
                     case "sleep": SetSuspendState(false, false, false); break;
                     case "hibernate": Process.Start(new ProcessStartInfo("shutdown", "/h") { CreateNoWindow = true }); break;
                     case "cancel": Process.Start(new ProcessStartInfo("shutdown", "/a") { CreateNoWindow = true }); break;
@@ -204,7 +208,7 @@ namespace PCRemote
 
         private static void RegisterCommands()
         {
-            Server.RegisterCommand("power", (s, r) => { var action = r.GetProperty("action").GetString() ?? ""; var seconds = r.TryGetProperty("seconds", out var secs) ? secs.GetInt32() : 0; if (action == "cancel") seconds = 0; Logger.Log("POWER", seconds > 0 ? $"{action} in {seconds}s" : action, ConsoleColor.Red); HandleCommand(action, seconds); return Task.CompletedTask; });
+            Server.RegisterCommand("power", (s, r) => { var action = r.TryGetProperty("action", out var act) ? act.GetString() ?? "" : ""; var seconds = r.TryGetProperty("seconds", out var secs) ? secs.GetInt32() : 0; if (action == "cancel") seconds = 0; Logger.Log("POWER", seconds > 0 ? $"{action} in {seconds}s" : action, ConsoleColor.Red); HandleCommand(action, seconds); return Task.CompletedTask; });
         }
     }
 }

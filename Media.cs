@@ -14,10 +14,14 @@ namespace PCRemote
         static byte[]? _currentThumbnailBytes;
         static string _currentThumbnailMime = "image/png";
         static long _thumbnailTimestamp = 0;
+        static readonly object _thumbLock = new object();
 
         public static (byte[]? bytes, string mime) GetCurrentThumbnail()
         {
-            return (_currentThumbnailBytes, _currentThumbnailMime);
+            lock (_thumbLock)
+            {
+                return (_currentThumbnailBytes, _currentThumbnailMime);
+            }
         }
 
         static readonly TypedEventHandler<GlobalSystemMediaTransportControlsSession, MediaPropertiesChangedEventArgs>
@@ -116,7 +120,10 @@ namespace PCRemote
         {
             if (thumbRef == null) 
             {
-                _currentThumbnailBytes = null;
+                lock (_thumbLock)
+                {
+                    _currentThumbnailBytes = null;
+                }
                 return null;
             }
             try
@@ -137,16 +144,28 @@ namespace PCRemote
                 string mime = (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8)
                     ? "image/jpeg" : "image/png";
                 
-                _currentThumbnailBytes = bytes;
-                _currentThumbnailMime = mime;
-                _thumbnailTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                long ts = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-                return $"/thumbnail?ts={_thumbnailTimestamp}";
+                lock (_thumbLock)
+                {
+                    if (_currentThumbnailBytes != null && _currentThumbnailBytes.Length == bytes.Length && _currentThumbnailBytes.SequenceEqual(bytes))
+                    {
+                        return $"/thumbnail?ts={_thumbnailTimestamp}";
+                    }
+                    _currentThumbnailBytes = bytes;
+                    _currentThumbnailMime = mime;
+                    _thumbnailTimestamp = ts;
+                }
+
+                return $"/thumbnail?ts={ts}";
             }
             catch (Exception ex)
             {
                 Logger.Log("MEDIA", $"Thumbnail read error: {ex.Message}", ConsoleColor.DarkGray);
-                _currentThumbnailBytes = null;
+                lock (_thumbLock)
+                {
+                    _currentThumbnailBytes = null;
+                }
                 return null;
             }
         }

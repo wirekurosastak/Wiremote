@@ -27,8 +27,8 @@ namespace PCRemote
             };
 
             Console.WriteLine("\n==========================================");
-            Console.WriteLine("            PC REMOTE CONTROL");
-            Console.WriteLine("https://github.com/wirekurosastak/PCRemote");
+            Console.WriteLine("                Wiremote");
+            Console.WriteLine("https://github.com/wirekurosastak/Wiremote");
             Console.WriteLine("==========================================\n");
 
             var ip = GetLocalIp();
@@ -64,7 +64,8 @@ namespace PCRemote
             // Proper resource cleanup
             AudioService.Cleanup();
             PowerService.Cleanup();
-            BrightnessService.Cleanup(); // Added to prevent WMI leaks
+            BrightnessService.Cleanup();
+            MediaService.Cleanup();
         }
 
         static bool IsAdministrator()
@@ -85,6 +86,8 @@ namespace PCRemote
                 }
 
                 RunCmd($"http delete urlacl url=http://*:{Server.HTTP_PORT}/");
+                // Use Well-Known SID S-1-1-0 (Everyone) to support localized Windows OS (German, Spanish, etc.)
+                RunCmd($"http add urlacl url=http://*:{Server.HTTP_PORT}/ user=\"S-1-1-0\"");
                 RunCmd($"http add urlacl url=http://*:{Server.HTTP_PORT}/ user=Everyone");
                 
                 RunCmd($"advfirewall firewall delete rule name=\"RemoteControl HTTP {Server.HTTP_PORT}\"");

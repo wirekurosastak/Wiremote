@@ -28,7 +28,24 @@ const UI = {
   hiddenKb: document.getElementById("hiddenKeyboard"),
   btnKb: document.getElementById("btnKeyboard"),
   leftClickBtn: document.getElementById("btnLeftClick"),
+  middleClickBtn: document.getElementById("btnMiddleClick"),
+  rightClickBtn: document.getElementById("btnRightClick"),
 };
+
+function updateSliderProgress(input) {
+  if (!input) return;
+  const min = parseFloat(input.min) || 0;
+  const max = parseFloat(input.max) || 100;
+  const val = parseFloat(input.value) || 0;
+  const pct = max > min ? ((val - min) / (max - min)) * 100 : 0;
+  input.style.setProperty("--progress", pct + "%");
+}
+
+document.addEventListener("input", (e) => {
+  if (e.target && e.target.matches('input[type="range"]')) {
+    updateSliderProgress(e.target);
+  }
+});
 
 function throttle(func, limit) {
   let lastFunc;
@@ -133,6 +150,7 @@ function connect() {
       if (data.type === "volume") {
         const val = Number(data.value);
         UI.slider.value = val;
+        updateSliderProgress(UI.slider);
         UI.volumeDisplay.textContent = val + "%";
         const row = UI.slider.closest(".master-vol-row");
         if (row) {
@@ -141,7 +159,7 @@ function connect() {
         }
       } else if (data.type === "sessions") renderSessions(data.sessions || []);
       else if (data.type === "devices") renderDevices(data.devices || []);
-      else if (data.type === "displays") renderDisplays(data.displays || []);
+      else if (data.type === "displays") renderDisplays(data.displays || [], data.mode);
       else if (data.type === "brightness") renderBrightness(data);
       else if (data.type === "nowplaying") renderNowPlaying(data);
       else if (data.type === "timer") {
@@ -165,13 +183,90 @@ function connect() {
   };
 }
 
+// ===== UPDATED MARQUEE WITH CONSTANT SPEED & TEXT CACHING =====
+function applyMarquee() {
+  requestAnimationFrame(() => {
+    const elements = document.querySelectorAll(
+      ".dev-name, .session-name, .np-title, .np-artist"
+    );
+    elements.forEach((el) => {
+      const existingWrapper = el.querySelector(".marquee-wrapper");
+      const currentText = existingWrapper ? (existingWrapper.dataset.originalText || "") : el.textContent.trim();
+
+      if (existingWrapper && el.dataset.lastMarqueeText === currentText) {
+        return; // Text is identical, retain running marquee without DOM rebuild
+      }
+
+      if (existingWrapper) {
+        const text = existingWrapper.dataset.originalText || el.textContent;
+        el.textContent = text;
+        existingWrapper.remove();
+      }
+
+      const text = el.textContent.trim();
+      if (!text) {
+        delete el.dataset.lastMarqueeText;
+        return;
+      }
+
+      if (el.scrollWidth <= el.clientWidth) {
+        delete el.dataset.lastMarqueeText;
+        return;
+      }
+
+      el.dataset.lastMarqueeText = text;
+
+      const wrapper = document.createElement("span");
+      wrapper.className = "marquee-wrapper";
+      wrapper.dataset.originalText = text;
+      wrapper.style.display = "inline-block";
+      wrapper.style.whiteSpace = "nowrap";
+
+      // Constant speed: 40px/s, so duration = scrollWidth / 40
+      const speed = 40;
+      const duration = el.scrollWidth / speed;
+      wrapper.style.animation = `marquee-scroll ${duration}s linear infinite`;
+
+      const copy1 = document.createElement("span");
+      copy1.textContent = text;
+      copy1.style.display = "inline-block";
+      const copy2 = document.createElement("span");
+      copy2.textContent = text;
+      copy2.style.display = "inline-block";
+      copy2.style.marginLeft = "2em";
+
+      wrapper.appendChild(copy1);
+      wrapper.appendChild(copy2);
+
+      el.textContent = "";
+      el.appendChild(wrapper);
+    });
+  });
+}
+
+// Inject keyframes once
+(function addMarqueeStyle() {
+  const style = document.createElement("style");
+  style.textContent = `
+    @keyframes marquee-scroll {
+      0% { transform: translateX(0); }
+      100% { transform: translateX(-50%); }
+    }
+    .marquee-wrapper {
+      display: inline-block;
+      white-space: nowrap;
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
 function command(commandName, extraProps = {}) {
   if (!socket || socket.readyState !== WebSocket.OPEN) return;
   socket.send(JSON.stringify({ command: commandName, ...extraProps }));
 }
 
 function bindButton(id, cmd, extraProps = {}) {
-  const el = document.getElementById(id);
+  const el = typeof id === "string" ? document.getElementById(id) : id;
   if (!el) return;
 
   let startX, startY, didScroll;
@@ -179,16 +274,18 @@ function bindButton(id, cmd, extraProps = {}) {
   el.addEventListener(
     "touchstart",
     (e) => {
+      e.stopPropagation();
       startX = e.touches[0].clientX;
       startY = e.touches[0].clientY;
       didScroll = false;
     },
-    { passive: true },
+    { passive: false },
   );
 
   el.addEventListener(
     "touchmove",
     (e) => {
+      e.stopPropagation();
       if (
         Math.abs(e.touches[0].clientX - startX) > 8 ||
         Math.abs(e.touches[0].clientY - startY) > 8
@@ -196,12 +293,13 @@ function bindButton(id, cmd, extraProps = {}) {
         didScroll = true;
       }
     },
-    { passive: true },
+    { passive: false },
   );
 
   el.addEventListener(
     "touchend",
     (e) => {
+      e.stopPropagation();
       if (!didScroll) {
         e.preventDefault();
         command(cmd, extraProps);
@@ -211,6 +309,7 @@ function bindButton(id, cmd, extraProps = {}) {
   );
 
   el.addEventListener("click", (e) => {
+    e.stopPropagation();
     if (e.pointerType !== "touch") command(cmd, extraProps);
   });
 }
@@ -275,6 +374,7 @@ if (UI.leftClickBtn) {
     "touchstart",
     (e) => {
       e.preventDefault();
+      e.stopPropagation();
       UI.leftClickBtn.classList.add("active");
       isLeftHeld = true;
       command("mouse_down", { button: "left" });
@@ -287,6 +387,7 @@ if (UI.leftClickBtn) {
     "touchend",
     (e) => {
       e.preventDefault();
+      e.stopPropagation();
       UI.leftClickBtn.classList.remove("active");
       if (isLeftHeld) {
         isLeftHeld = false;
@@ -298,7 +399,8 @@ if (UI.leftClickBtn) {
 
   UI.leftClickBtn.addEventListener(
     "touchcancel",
-    () => {
+    (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
       UI.leftClickBtn.classList.remove("active");
       if (isLeftHeld) {
         isLeftHeld = false;
@@ -311,6 +413,71 @@ if (UI.leftClickBtn) {
   UI.leftClickBtn.addEventListener("contextmenu", (e) => e.preventDefault());
 }
 
+if (UI.middleClickBtn) {
+  let mStartY = null,
+    mLastY = null,
+    mScrolled = false;
+
+  UI.middleClickBtn.addEventListener(
+    "touchstart",
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      UI.middleClickBtn.classList.add("active");
+      mStartY = mLastY = e.touches[0].clientY;
+      mScrolled = false;
+      if (navigator.vibrate) navigator.vibrate(30);
+    },
+    { passive: false },
+  );
+
+  UI.middleClickBtn.addEventListener(
+    "touchmove",
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (mLastY !== null && e.touches.length >= 1) {
+        const cy = e.touches[0].clientY;
+        const deltaY = cy - mLastY;
+        if (Math.abs(cy - mStartY) > 5) {
+          mScrolled = true;
+        }
+        if (Math.abs(deltaY) >= 1) {
+          command("mouse_scroll", { dy: deltaY * 3.0 });
+          mLastY = cy;
+        }
+      }
+    },
+    { passive: false },
+  );
+
+  UI.middleClickBtn.addEventListener(
+    "touchend",
+    (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      UI.middleClickBtn.classList.remove("active");
+      if (!mScrolled) {
+        command("mouse_click", { button: "middle" });
+      }
+      mStartY = mLastY = null;
+    },
+    { passive: false },
+  );
+
+  UI.middleClickBtn.addEventListener(
+    "touchcancel",
+    (e) => {
+      if (e && e.stopPropagation) e.stopPropagation();
+      UI.middleClickBtn.classList.remove("active");
+      mStartY = mLastY = null;
+    },
+    { passive: false },
+  );
+
+  UI.middleClickBtn.addEventListener("contextmenu", (e) => e.preventDefault());
+}
+
 bindButton("btnRightClick", "mouse_click", { button: "right" });
 bindButton("volumeDisplay", "mute");
 bindButton("btnMediaPrev", "media_previous");
@@ -318,7 +485,6 @@ bindButton("btnMediaPlay", "media_play_pause");
 bindButton("btnMediaNext", "media_next");
 bindHoldButton("btnWebLeft", "web_left");
 bindHoldButton("btnWebRight", "web_right");
-bindButton("btnDispOff", "displays_off");
 
 const projSelect = document.getElementById("projectionModeSelect");
 if (projSelect) {
@@ -558,8 +724,7 @@ function renderDevices(devices) {
       btn.innerHTML = `<span class="dev-check">${d.isDefault ? "✓" : ""}</span><span class="dev-name"></span>`;
       btn.querySelector(".dev-name").textContent = d.name;
       btn.addEventListener("click", () => {
-        const currentData = devices.find((x) => x.id === d.id);
-        if (currentData && !currentData.isDefault)
+        if (!btn.classList.contains("active"))
           command("set_device", { id: d.id });
       });
       UI.deviceList.appendChild(btn);
@@ -569,6 +734,8 @@ function renderDevices(devices) {
   Object.keys(existingRows).forEach((id) => {
     if (!newRows.has(id)) existingRows[id].remove();
   });
+
+  applyMarquee();
 }
 
 let sessionDragging = false,
@@ -586,7 +753,7 @@ window.addEventListener("mouseup", endSessionDrag);
 window.addEventListener("touchend", endSessionDrag, { passive: true });
 window.addEventListener("touchcancel", endSessionDrag, { passive: true });
 
-function renderDisplays(displays) {
+function renderDisplays(displays, mode) {
   if (!UI.displayList) return;
 
   if (displays.length === 0) {
@@ -612,9 +779,8 @@ function renderDisplays(displays) {
     let btn = existingRows[d.id];
 
     const displayName = d.name || d.id;
-    const rowLabel = (d.isPrimary ? "⭐ " : "") + displayName;
+    const rowLabel = displayName + (d.isPrimary ? " (Primary)" : "");
 
-    // Monitor buttons for the list
     if (btn) {
       btn.className = "device-btn" + (d.isActive ? " active" : "");
       btn.querySelector(".dev-check").textContent = d.isActive ? "✓" : "";
@@ -636,7 +802,6 @@ function renderDisplays(displays) {
       UI.displayList.appendChild(btn);
     }
 
-    // Build dropdown options for the primary monitor
     primarySelectHtml += `<option value="${d.id}" ${d.isPrimary ? "selected" : ""}>${displayName}</option>`;
   });
 
@@ -644,7 +809,6 @@ function renderDisplays(displays) {
     if (!newRows.has(id)) existingRows[id].remove();
   });
 
-  // Update dropdown (if it's not currently opened by the user)
   if (primarySelect && document.activeElement !== primarySelect) {
     primarySelect.innerHTML = primarySelectHtml;
   }
@@ -656,10 +820,15 @@ function renderDisplays(displays) {
     primarySelect.style.cursor = hasMultiple ? "pointer" : "not-allowed";
   }
   if (projSelect) {
+    if (mode && document.activeElement !== projSelect) {
+      projSelect.value = mode;
+    }
     projSelect.disabled = !hasMultiple;
     projSelect.style.opacity = hasMultiple ? "1" : "0.5";
     projSelect.style.cursor = hasMultiple ? "pointer" : "not-allowed";
   }
+
+  applyMarquee();
 }
 
 function renderSessions(sessions) {
@@ -695,6 +864,7 @@ function renderSessions(sessions) {
 
       if (document.activeElement !== range) {
         range.value = s.volume;
+        updateSliderProgress(range);
         pct.textContent = s.volume + "%";
       }
     } else {
@@ -713,6 +883,7 @@ function renderSessions(sessions) {
       range.min = 0;
       range.max = 100;
       range.value = s.volume;
+      updateSliderProgress(range);
 
       const pct = document.createElement("div");
       pct.className = "session-pct";
@@ -751,6 +922,8 @@ function renderSessions(sessions) {
   Object.keys(existingRows).forEach((id) => {
     if (!newRows.has(id)) existingRows[id].remove();
   });
+
+  applyMarquee();
 }
 
 let brightnessDragging = false;
@@ -761,6 +934,7 @@ function renderBrightness(data) {
   if (!data.supported) {
     if (UI.brightnessSlider) {
       UI.brightnessSlider.value = 100;
+      updateSliderProgress(UI.brightnessSlider);
       UI.brightnessSlider.disabled = true;
     }
     if (UI.brightnessContainer) {
@@ -782,6 +956,7 @@ function renderBrightness(data) {
 
   if (!brightnessDragging) {
     UI.brightnessSlider.value = data.value;
+    updateSliderProgress(UI.brightnessSlider);
     UI.brightnessDisplay.textContent = data.value + "%";
   }
 }
@@ -830,14 +1005,20 @@ function renderNowPlaying(d) {
 
   UI.npTitle.textContent = d.title || "Unknown";
   UI.npArtist.textContent = d.artist || "";
-  UI.npStatus.textContent = d.status === "playing" ? "▶ Playing" : "⏸ Paused";
+  UI.npStatus.innerHTML = d.status === "playing"
+    ? '<span class="np-status-icon">▶</span>Playing'
+    : '<span class="np-status-icon">⏸</span>Paused';
   if (d.thumb) {
     UI.npArt.style.backgroundImage = `url('${d.thumb}')`;
     UI.npArt.classList.add("has-art");
+    UI.npArt.innerHTML = "";
   } else {
     UI.npArt.style.backgroundImage = "";
     UI.npArt.classList.remove("has-art");
+    UI.npArt.innerHTML = '<span class="np-art-emoji">🎵</span>';
   }
+
+  applyMarquee();
 }
 
 const tabAudio = document.getElementById("tabAudio");
@@ -874,6 +1055,248 @@ if (tabAudio && tabDisplay && contentAudio && contentDisplay) {
   tabDisplay.addEventListener("click", (e) => switchTab(e, false));
   tabDisplay.addEventListener("touchstart", (e) => switchTab(e, false), {
     passive: false,
+  });
+}
+
+document.querySelectorAll('input[type="range"]').forEach(updateSliderProgress);
+
+let rainbowFrameId = null;
+let rainbowHue = 0;
+let lastRainbowTime = 0;
+
+let rainbowSpeedStep = 0.5;
+
+function stepRainbow(timestamp) {
+  if (!document.documentElement.classList.contains("rainbow-mode")) return;
+
+  if (!lastRainbowTime || timestamp - lastRainbowTime >= 33) {
+    lastRainbowTime = timestamp;
+    rainbowHue = (rainbowHue + rainbowSpeedStep) % 360;
+    const h0 = rainbowHue;
+    const h1 = (rainbowHue + 60) % 360;
+    const h2 = (rainbowHue + 120) % 360;
+    const h3 = (rainbowHue + 180) % 360;
+    const h4 = (rainbowHue + 240) % 360;
+    const h5 = (rainbowHue + 300) % 360;
+
+    const grad = `linear-gradient(to right, hsl(${h0}, 85%, 60%), hsl(${h1}, 85%, 60%), hsl(${h2}, 85%, 60%), hsl(${h3}, 85%, 60%), hsl(${h4}, 85%, 60%), hsl(${h5}, 85%, 60%), hsl(${h0}, 85%, 60%))`;
+
+    document.documentElement.style.setProperty("--accent", `hsl(${rainbowHue}, 85%, 60%)`);
+    document.documentElement.style.setProperty("--rainbow-grad", grad);
+  }
+
+  rainbowFrameId = requestAnimationFrame(stepRainbow);
+}
+
+const hueSlider = document.getElementById("hueSlider");
+const hueValDisplay = document.getElementById("hueValDisplay");
+const satSlider = document.getElementById("satSlider");
+const satValDisplay = document.getElementById("satValDisplay");
+const lightSlider = document.getElementById("lightSlider");
+const lightValDisplay = document.getElementById("lightValDisplay");
+const colorControlsGroup = document.getElementById("colorControlsGroup");
+const btnDefaultAccent = document.getElementById("btnDefaultAccent");
+
+const borderVisibilitySelect = document.getElementById("borderVisibilitySelect");
+const borderSpeedSelect = document.getElementById("borderSpeedSelect");
+const borderSpeedRow = document.getElementById("borderSpeedRow");
+const borderModeSelect = document.getElementById("borderModeSelect");
+const borderModeRow = document.getElementById("borderModeRow");
+
+function applyCustomHSL(hue, sat, light) {
+  if (document.documentElement.classList.contains("rainbow-mode")) return;
+  const h = parseInt(hue, 10);
+  const s = parseInt(sat, 10);
+  const l = parseInt(light, 10);
+  const pointerL = Math.max(10, l - 15);
+
+  document.documentElement.style.setProperty("--accent", `hsl(${h}, ${s}%, ${l}%)`);
+  document.documentElement.style.setProperty("--accent-pointer", `hsl(${h}, ${s}%, ${pointerL}%)`);
+}
+
+function updateColorSlidersFromStorage() {
+  const h = localStorage.getItem("customHue") || "42";
+  const s = localStorage.getItem("customSat") || "70";
+  const l = localStorage.getItem("customLight") || "55";
+
+  if (hueSlider) hueSlider.value = h;
+  if (hueValDisplay) hueValDisplay.textContent = `${h}°`;
+  if (satSlider) satSlider.value = s;
+  if (satValDisplay) satValDisplay.textContent = `${s}%`;
+  if (lightSlider) lightSlider.value = l;
+  if (lightValDisplay) lightValDisplay.textContent = `${l}%`;
+
+  if (localStorage.getItem("rainbowAccent") !== "true" && localStorage.getItem("customHue") !== null) {
+    applyCustomHSL(h, s, l);
+  }
+}
+
+function applyBorderSettings() {
+  const vis = borderVisibilitySelect ? borderVisibilitySelect.value : "animated";
+  const mode = borderModeSelect ? borderModeSelect.value : "sync";
+
+  localStorage.setItem("borderVisibility", vis);
+  localStorage.setItem("borderMode", mode);
+
+  document.documentElement.classList.remove(
+    "border-off", "border-animated", "border-full",
+    "border-rush", "border-sync"
+  );
+  document.documentElement.classList.add(`border-${vis}`, `border-${mode}`);
+  updateSpeedDisableState();
+}
+
+function applySpeedSettings() {
+  const speed = borderSpeedSelect ? borderSpeedSelect.value : "slow";
+  localStorage.setItem("borderSpeed", speed);
+
+  if (speed === "slow") {
+    document.documentElement.style.setProperty("--border-speed", "12s");
+    rainbowSpeedStep = 0.2;
+  } else if (speed === "fast") {
+    document.documentElement.style.setProperty("--border-speed", "3s");
+    rainbowSpeedStep = 1.2;
+  } else {
+    document.documentElement.style.setProperty("--border-speed", "6s");
+    rainbowSpeedStep = 0.5;
+  }
+}
+
+function updateSpeedDisableState() {
+  const vis = borderVisibilitySelect ? borderVisibilitySelect.value : "animated";
+  const isRainbow = localStorage.getItem("rainbowAccent") === "true";
+
+  const isModeEnabled = (vis === "animated" || vis === "full") && isRainbow;
+  const isSpeedEnabled = (vis === "animated") || isRainbow;
+
+  if (borderModeSelect) {
+    borderModeSelect.disabled = !isModeEnabled;
+  }
+  if (borderModeRow) {
+    borderModeRow.classList.toggle("disabled", !isModeEnabled);
+  }
+
+  if (borderSpeedSelect) {
+    borderSpeedSelect.disabled = !isSpeedEnabled;
+  }
+  if (borderSpeedRow) {
+    borderSpeedRow.classList.toggle("disabled", !isSpeedEnabled);
+  }
+}
+
+function setRainbowState(enabled) {
+  if (enabled) {
+    localStorage.setItem("rainbowAccent", "true");
+    document.documentElement.classList.add("rainbow-mode");
+    if (colorControlsGroup) colorControlsGroup.classList.add("disabled");
+    [hueSlider, satSlider, lightSlider, btnDefaultAccent].forEach((s) => {
+      if (s) s.disabled = true;
+    });
+
+    if (!rainbowFrameId) {
+      rainbowFrameId = requestAnimationFrame(stepRainbow);
+    }
+  } else {
+    localStorage.setItem("rainbowAccent", "false");
+    document.documentElement.classList.remove("rainbow-mode");
+    if (colorControlsGroup) colorControlsGroup.classList.remove("disabled");
+    [hueSlider, satSlider, lightSlider, btnDefaultAccent].forEach((s) => {
+      if (s) s.disabled = false;
+    });
+
+    if (rainbowFrameId) {
+      cancelAnimationFrame(rainbowFrameId);
+      rainbowFrameId = null;
+    }
+    document.documentElement.style.removeProperty("--rainbow-grad");
+
+    const h = localStorage.getItem("customHue") || "42";
+    const s = localStorage.getItem("customSat") || "70";
+    const l = localStorage.getItem("customLight") || "55";
+    applyCustomHSL(h, s, l);
+  }
+  updateSpeedDisableState();
+}
+
+function bindColorSlider(slider, display, storageKey, suffix) {
+  if (!slider) return;
+  slider.addEventListener("input", (e) => {
+    const val = e.target.value;
+    if (display) display.textContent = `${val}${suffix}`;
+    localStorage.setItem(storageKey, val);
+    const h = hueSlider ? hueSlider.value : "42";
+    const s = satSlider ? satSlider.value : "70";
+    const l = lightSlider ? lightSlider.value : "55";
+    applyCustomHSL(h, s, l);
+  });
+}
+
+updateColorSlidersFromStorage();
+bindColorSlider(hueSlider, hueValDisplay, "customHue", "°");
+bindColorSlider(satSlider, satValDisplay, "customSat", "%");
+bindColorSlider(lightSlider, lightValDisplay, "customLight", "%");
+
+if (btnDefaultAccent) {
+  btnDefaultAccent.addEventListener("click", () => {
+    localStorage.removeItem("customHue");
+    localStorage.removeItem("customSat");
+    localStorage.removeItem("customLight");
+
+    updateColorSlidersFromStorage();
+    document.documentElement.style.removeProperty("--accent");
+    document.documentElement.style.removeProperty("--accent-pointer");
+  });
+}
+
+// Initial Border Setup (Defaults: Visibility = animated, Mode = sync, Speed = slow)
+if (borderVisibilitySelect && borderModeSelect) {
+  const savedVis = localStorage.getItem("borderVisibility") || "animated";
+  const savedMode = localStorage.getItem("borderMode") || "sync";
+  const savedSpeed = localStorage.getItem("borderSpeed") || "slow";
+
+  borderVisibilitySelect.value = savedVis;
+  borderModeSelect.value = savedMode;
+  if (borderSpeedSelect) borderSpeedSelect.value = savedSpeed;
+
+  applyBorderSettings();
+  applySpeedSettings();
+
+  borderVisibilitySelect.addEventListener("change", applyBorderSettings);
+  borderModeSelect.addEventListener("change", applyBorderSettings);
+  if (borderSpeedSelect) {
+    borderSpeedSelect.addEventListener("change", applySpeedSettings);
+  }
+}
+
+const themeSelect = document.getElementById("themeSelect");
+
+function setThemeMode(theme) {
+  localStorage.setItem("themeMode", theme);
+  if (theme === "light") {
+    document.documentElement.setAttribute("data-theme", "light");
+  } else {
+    document.documentElement.removeAttribute("data-theme");
+  }
+}
+
+if (themeSelect) {
+  const savedTheme = localStorage.getItem("themeMode") || "dark";
+  themeSelect.value = savedTheme;
+  setThemeMode(savedTheme);
+
+  themeSelect.addEventListener("change", (e) => {
+    setThemeMode(e.target.value);
+  });
+}
+
+const rainbowToggle = document.getElementById("rainbowToggle");
+if (rainbowToggle) {
+  const isRainbow = localStorage.getItem("rainbowAccent") === "true";
+  rainbowToggle.checked = isRainbow;
+  if (isRainbow) setRainbowState(true);
+
+  rainbowToggle.addEventListener("change", (e) => {
+    setRainbowState(e.target.checked);
   });
 }
 

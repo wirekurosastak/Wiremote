@@ -23,12 +23,11 @@ namespace PCRemote
                 try
                 {
                     var context = await _httpListener.GetContextAsync();
-                    var response = context.Response;
+                    using var response = context.Response;
                     var requestUrl = context.Request.Url;
                     if (requestUrl == null)
                     {
                         response.StatusCode = 400;
-                        response.OutputStream.Close();
                         continue;
                     }
                     var path = requestUrl.AbsolutePath;
@@ -69,7 +68,6 @@ namespace PCRemote
                             response.StatusCode = 404;
                         }
                     }
-                    response.OutputStream.Close();
                 }
                 catch (HttpListenerException) { break; }
                 catch (ObjectDisposedException) { break; }

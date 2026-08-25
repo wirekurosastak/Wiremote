@@ -66,8 +66,8 @@ namespace PCRemote
         [DllImport("user32.dll", CharSet = CharSet.Ansi)]
         static extern int ChangeDisplaySettingsEx(string? lpszDeviceName, ref DEVMODE lpDevMode, IntPtr hwnd, uint dwflags, IntPtr lParam);
 
-        [DllImport("user32.dll", CharSet = CharSet.Ansi, EntryPoint = "ChangeDisplaySettingsEx")]
-        static extern int ChangeDisplaySettingsExPtr(string? lpszDeviceName, IntPtr lpDevMode, IntPtr hwnd, uint dwflags, IntPtr lParam);
+        [DllImport("user32.dll", CharSet = CharSet.Ansi)]
+        static extern int ChangeDisplaySettingsEx(string? lpszDeviceName, IntPtr lpDevMode, IntPtr hwnd, uint dwflags, IntPtr lParam);
 
         const uint CDS_SET_PRIMARY = 0x00000010;
 
@@ -87,6 +87,8 @@ namespace PCRemote
             public string Name { get; set; } = "";
             public bool IsActive { get; set; }
             public bool IsPrimary { get; set; }
+            public int X { get; set; }
+            public int Y { get; set; }
         }
 
         public static void Init()
@@ -97,7 +99,7 @@ namespace PCRemote
         static Dictionary<string, string>? _cachedWmiNames = null;
         static readonly object _wmiCacheLock = new object();
 
-        public static List<DisplayInfo> GetDisplays()
+        public static List<DisplayInfo> GetDisplays(bool allowRefresh = true)
         {
             var displays = new List<DisplayInfo>();
             var seenHwIds = new Dictionary<string, DisplayInfo>(StringComparer.OrdinalIgnoreCase);
@@ -144,6 +146,7 @@ namespace PCRemote
             }
             
             var wmiNames = _cachedWmiNames;
+            bool cacheMiss = false;
 
             uint i = 0;
             DISPLAY_DEVICE dd = new DISPLAY_DEVICE();
@@ -158,19 +161,40 @@ namespace PCRemote
                     
                     if (isActive)
                     {
-                        DISPLAY_DEVICE monitor = new DISPLAY_DEVICE();
-                        monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
-                        bool hasMonitor = EnumDisplayDevices(dd.DeviceName, 0, ref monitor, 1);
-                        
-                        if (!hasMonitor)
+                        uint j = 0;
+
+                        DEVMODE currentMode = new DEVMODE();
+                        currentMode.dmSize = (ushort)Marshal.SizeOf(currentMode);
+                        int x = 0, y = 0;
+                        if (EnumDisplaySettings(dd.DeviceName, ENUM_CURRENT_SETTINGS, ref currentMode))
                         {
-                            monitor = new DISPLAY_DEVICE();
-                            monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
-                            hasMonitor = EnumDisplayDevices(dd.DeviceName, 0, ref monitor, 0);
+                            x = currentMode.dmPosition.x;
+                            y = currentMode.dmPosition.y;
                         }
 
-                        if (hasMonitor)
+                        while (true)
                         {
+                            DISPLAY_DEVICE monitor = new DISPLAY_DEVICE();
+                            monitor.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+                            bool hasMonitor = EnumDisplayDevices(dd.DeviceName, j, ref monitor, 0);
+                            if (!hasMonitor) break;
+
+                            if ((monitor.StateFlags & 0x00000003) == 0) // Not attached and not active
+                            {
+                                j++;
+                                continue;
+                            }
+
+                            DISPLAY_DEVICE monitorInterface = new DISPLAY_DEVICE();
+                            monitorInterface.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+                            if (EnumDisplayDevices(dd.DeviceName, j, ref monitorInterface, 1))
+                            {
+                                if (!string.IsNullOrEmpty(monitorInterface.DeviceID))
+                                {
+                                    monitor = monitorInterface;
+                                }
+                            }
+
                             string displayName = monitor.DeviceString;
                             string devId = monitor.DeviceID;
                             string? hwId = null;
@@ -183,20 +207,22 @@ namespace PCRemote
                                     hwId = $"{parts[0]}#{parts[1]}#{parts[2]}";
                                     if (wmiNames.ContainsKey(hwId) && !string.IsNullOrWhiteSpace(wmiNames[hwId]))
                                         displayName = wmiNames[hwId];
+                                    else
+                                        cacheMiss = true;
                                 }
                             }
                             
                             if (string.IsNullOrWhiteSpace(displayName))
-                            {
                                 displayName = dd.DeviceString;
-                            }
 
                             var info = new DisplayInfo
                             {
                                 Id = dd.DeviceName,
                                 Name = displayName,
                                 IsActive = true,
-                                IsPrimary = isPrimary
+                                IsPrimary = isPrimary,
+                                X = x,
+                                Y = y
                             };
 
                             if (hwId != null)
@@ -211,12 +237,20 @@ namespace PCRemote
                             {
                                 displays.Add(info);
                             }
+                            
+                            j++;
                         }
                     }
                 }
                 
                 i++;
                 dd.cb = Marshal.SizeOf(typeof(DISPLAY_DEVICE));
+            }
+
+            if (cacheMiss && allowRefresh)
+            {
+                lock (_wmiCacheLock) { _cachedWmiNames = null; }
+                return GetDisplays(false);
             }
 
             var activeHwIds = seenHwIds.Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -227,9 +261,11 @@ namespace PCRemote
                     displays.Add(new DisplayInfo
                     {
                         Id = "DISABLED_" + kvp.Key,
-                        Name = kvp.Value + " (Disconnected)",
+                        Name = kvp.Value + " (Disabled)",
                         IsActive = false,
-                        IsPrimary = false
+                        IsPrimary = false,
+                        X = 0,
+                        Y = 0
                     });
                 }
             }
@@ -353,7 +389,7 @@ namespace PCRemote
                 {
                     if (TryEnableAdapter(adapter))
                     {
-                        ChangeDisplaySettingsExPtr(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+                        ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
                         return;
                     }
                 }
@@ -365,7 +401,7 @@ namespace PCRemote
                 bool success = enable ? TryEnableAdapter(deviceName) : TryDisableAdapter(deviceName);
                 if (success)
                 {
-                    ChangeDisplaySettingsExPtr(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+                    ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
                 }
             }
         }
@@ -398,17 +434,31 @@ namespace PCRemote
                         ChangeDisplaySettingsEx(currentPrimary.Id, ref oldMode, IntPtr.Zero, CDS_UPDATEREGISTRY | CDS_NORESET, IntPtr.Zero);
                     }
                 }
-                ChangeDisplaySettingsExPtr(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
+                ChangeDisplaySettingsEx(null, IntPtr.Zero, IntPtr.Zero, 0, IntPtr.Zero);
             }
         }
         
         static readonly JsonSerializerOptions _jsonOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
+        public static string GetCurrentProjectionMode(List<DisplayInfo> displays)
+        {
+            var activeDisplays = displays.Where(d => d.IsActive).ToList();
+            if (activeDisplays.Count <= 1) return "extend";
+
+            var positionCounts = activeDisplays.GroupBy(d => new { d.X, d.Y }).Select(g => g.Count()).ToList();
+            
+            int clonedMonitors = positionCounts.Where(c => c > 1).Sum();
+            int extendedMonitors = positionCounts.Where(c => c == 1).Sum();
+
+            return extendedMonitors >= clonedMonitors ? "extend" : "clone";
+        }
+
         public static void SendDisplays(IWebSocketConnection socket)
         {
             try 
             {
-                var msg = JsonSerializer.Serialize(new { type = "displays", displays = GetDisplays() }, _jsonOpts);
+                var displays = GetDisplays();
+                var msg = JsonSerializer.Serialize(new { type = "displays", displays = displays, mode = GetCurrentProjectionMode(displays) }, _jsonOpts);
                 socket.Send(msg); 
             } 
             catch (Exception ex) 
@@ -421,7 +471,8 @@ namespace PCRemote
         {
             try 
             {
-                var msg = JsonSerializer.Serialize(new { type = "displays", displays = GetDisplays() }, _jsonOpts);
+                var displays = GetDisplays();
+                var msg = JsonSerializer.Serialize(new { type = "displays", displays = displays, mode = GetCurrentProjectionMode(displays) }, _jsonOpts);
                 Server.Broadcast(msg);
             }
             catch (Exception ex)
@@ -432,11 +483,11 @@ namespace PCRemote
 
         private static void RegisterCommands()
         {
-            Server.RegisterCommand("display_switch", (s, r) => { var mode = r.GetProperty("mode").GetString() ?? ""; string arg = mode switch { "clone" => "/clone", "extend" => "/extend", _ => "" }; if (!string.IsNullOrEmpty(arg)) { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("DisplaySwitch.exe", arg) { UseShellExecute = true, CreateNoWindow = true }); } catch (Exception ex) { Logger.Log("DISPLAY", $"Switch process failed: {ex.Message}", ConsoleColor.Red); } Logger.Log("DISPLAY", $"switch {mode}", ConsoleColor.Cyan); } return Task.CompletedTask; });
+            Server.RegisterCommand("display_switch", (s, r) => { var mode = r.TryGetProperty("mode", out var mProp) ? mProp.GetString() ?? "" : ""; string arg = mode switch { "clone" => "/clone", "extend" => "/extend", _ => "" }; if (!string.IsNullOrEmpty(arg)) { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("DisplaySwitch.exe", arg) { UseShellExecute = true, CreateNoWindow = true }); } catch (Exception ex) { Logger.Log("DISPLAY", $"Switch process failed: {ex.Message}", ConsoleColor.Red); } Logger.Log("DISPLAY", $"switch {mode}", ConsoleColor.Cyan); } return Task.CompletedTask; });
             Server.RegisterCommand("displays_off", (s, r) => { Interop.SendMessage((IntPtr)0xFFFF, 0x0112, (IntPtr)0xF170, (IntPtr)2); Logger.Log("DISPLAY", "turn off", ConsoleColor.Cyan); return Task.CompletedTask; });
             Server.RegisterCommand("get_displays", (s, r) => { SendDisplays(s); return Task.CompletedTask; });
-            Server.RegisterCommand("set_display", (s, r) => { var id = r.GetProperty("id").GetString() ?? ""; var active = r.GetProperty("active").GetBoolean(); ToggleDisplay(id, active); BroadcastDisplays(); Logger.Log("DISPLAY", $"{id} -> {(active ? "on" : "off")}", ConsoleColor.Cyan); return Task.CompletedTask; });
-            Server.RegisterCommand("set_primary_display", (s, r) => { var id = r.GetProperty("id").GetString() ?? ""; SetPrimaryDisplay(id); BroadcastDisplays(); Logger.Log("DISPLAY", $"Primary monitor changed", ConsoleColor.Cyan); return Task.CompletedTask; });
+            Server.RegisterCommand("set_display", (s, r) => { var id = r.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : ""; var active = r.TryGetProperty("active", out var actProp) && actProp.GetBoolean(); ToggleDisplay(id, active); BroadcastDisplays(); Logger.Log("DISPLAY", $"{id} -> {(active ? "on" : "off")}", ConsoleColor.Cyan); return Task.CompletedTask; });
+            Server.RegisterCommand("set_primary_display", (s, r) => { var id = r.TryGetProperty("id", out var idProp) ? idProp.GetString() ?? "" : ""; SetPrimaryDisplay(id); BroadcastDisplays(); Logger.Log("DISPLAY", $"Primary monitor changed", ConsoleColor.Cyan); return Task.CompletedTask; });
         }
     }
 }

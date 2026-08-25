@@ -1,188 +1,348 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <meta name="theme-color" content="#000000">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <title>PC Remote</title>
-    <link rel="stylesheet" href="style.css?v=4">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>Wiremote</title>
+  <link rel="stylesheet" href="style.css?v=1" />
 </head>
 
 <body>
-    <div class="container">
-
-        <div class="header">
-            <h1>PC Remote</h1>
-            <div id="statusBadge" class="status-badge">
-                <div class="dot"></div><span id="statusText">Offline</span>
-            </div>
-        </div>
-
-        <!-- MEDIA (Now Playing + Global + Web) -->
-        <details class="card-dropdown" open>
-            <summary>MEDIA</summary>
-
-            <!-- Now Playing Area -->
-            <div id="nowPlayingCard">
-                <div id="npEmpty"
-                    style="display: flex; justify-content: center; align-items: center; height: 64px; color: var(--secondary); font-weight: 600; font-size: 15px;">
-                    Nothing there...
-                </div>
-                <div class="np-row" id="npContent" style="display: none;">
-                    <div class="np-art" id="npArt">🎵</div>
-                    <div class="np-meta">
-                        <div class="np-title" id="npTitle">Unknown</div>
-                        <div class="np-artist" id="npArtist"></div>
-                        <div class="np-status" id="npStatus"></div>
-                    </div>
-                </div>
-                <hr class="card-divider">
-            </div>
-
-            <!-- Player Controls -->
-            <div class="media-grid">
-                <button type="button" id="btnMediaPrev">⏮</button>
-                <button type="button" id="btnWebLeft">−15s</button>
-                <button type="button" class="play-btn" id="btnMediaPlay">⏯</button>
-                <button type="button" id="btnWebRight">+15s</button>
-                <button type="button" id="btnMediaNext">⏭</button>
-            </div>
-        </details>
-
-        <!-- AUDIO & DISPLAY -->
-        <details class="card-dropdown" open>
-            <summary id="audioDisplayTabs">
-                <div style="display: flex; gap: 8px; align-items: center;">
-                    <span id="tabAudio"
-                        style="text-decoration: underline; cursor: pointer; text-underline-offset: 4px; padding: 4px 8px; margin-left: -8px;">AUDIO</span>
-                    <span style="opacity: 0.4; font-weight: 300;">/</span>
-                    <span id="tabDisplay"
-                        style="cursor: pointer; opacity: 0.6; text-underline-offset: 4px; padding: 4px 8px;">DISPLAY</span>
-                </div>
-            </summary>
-
-            <div id="tabContentContainer">
-                <!-- AUDIO CONTENT -->
-                <div id="contentAudio">
-                    <!-- Master Volume -->
-                    <div class="master-vol-row">
-                        <input id="slider" type="range" min="0" max="100" value="50">
-                        <div class="volume-number" id="volumeDisplay">--%</div>
-                    </div>
-
-                    <hr class="card-divider">
-
-                    <!-- Output Device -->
-                    <details class="dropdown-details">
-                        <summary>Output Device</summary>
-                        <div id="deviceList" class="device-list">
-                            <div class="hint">…</div>
-                        </div>
-                    </details>
-
-                    <!-- Volume Mixer -->
-                    <details class="dropdown-details" style="margin-bottom: 0;">
-                        <summary>Volume Mixer</summary>
-                        <div id="sessionList" class="session-list">
-                            <div class="hint">No active apps</div>
-                        </div>
-                    </details>
-                </div>
-
-                <!-- DISPLAY CONTENT -->
-                <div id="contentDisplay" style="display: none;">
-                    <div class="master-vol-row" id="brightnessContainer">
-                        <input id="brightnessSlider" type="range" min="0" max="100" value="50">
-                        <div class="volume-number" id="brightnessDisplay" style="white-space: nowrap;">--%</div>
-                    </div>
-
-                    <hr class="card-divider" id="brightnessDivider">
-
-                    <details class="dropdown-details" style="margin-bottom: 12px; margin-top: 8px;">
-                        <summary>Monitors</summary>
-                        <div id="displayList" class="device-list">
-                            <div class="hint">…</div>
-                        </div>
-                    </details>
-
-                    <details class="dropdown-details" style="margin-bottom: 12px;">
-                        <summary>Main Monitor</summary>
-                        <select id="primaryMonitorSelect"
-                            style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;"></select>
-                    </details>
-                    <details class="dropdown-details" style="margin-bottom: 0;">
-                        <summary>Mode</summary>
-                        <select id="projectionModeSelect"
-                            style="width: 100%; padding: 12px; background: var(--surface3); color: var(--text); border: none; border-radius: 8px; font-size: 15px; outline: none; -webkit-appearance: none; appearance: none; text-align: center; font-weight: 500; cursor: pointer;">
-                            <option value="extend" selected>Extend</option>
-                            <option value="clone">Clone</option>
-                        </select>
-                    </details>
-                </div>
-            </div>
-        </details>
-
-        <!-- CONTROLS -->
-        <details class="card-dropdown">
-            <summary>CONTROLS</summary>
-
-            <div id="touchpad" class="touchpad-area">
-                <span class="touchpad-text">TOUCHPAD</span>
-            </div>
-
-            <div class="sensitivity-control">
-                <label for="sensSlider"><span>Sensitivity</span> <span id="sensValue">5.0x</span></label>
-                <input id="sensSlider" type="range" min="0" max="10" step="0.1" value="5.0">
-            </div>
-
-            <div class="mouse-buttons">
-                <button type="button" id="btnLeftClick">Left Click</button>
-                <button type="button" id="btnRightClick">Right Click</button>
-            </div>
-
-            <button type="button" id="btnKeyboard" class="btn-keyboard">Keyboard</button>
-
-            <input type="text" id="hiddenKeyboard" inputmode="text" autocomplete="off" autocorrect="off"
-                spellcheck="false" style="position:fixed; left:-9999px; top:0; opacity:0; height:1px; width:1px;">
-        </details>
-
-        <!-- POWER -->
-        <details id="powerDetails" class="card-dropdown">
-            <summary class="power-summary" style="display: block;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                    <span>POWER</span>
-                    <span id="timerBadge"
-                        style="display: none; font-size: 12px; font-weight: 600; color: var(--accent); flex: 1; text-align: center; padding: 0 8px;"></span>
-                    <span class="power-arrow">▼</span>
-                </div>
-            </summary>
-            <div class="timer-row">
-                <div class="timer-col"><label>Hours</label><input type="number" id="timeHours" min="0" value="0"></div>
-                <div class="timer-col"><label>Minutes</label><input type="number" id="timeMins" min="0" max="59"
-                        value="0"></div>
-                <div class="timer-col"><label>Seconds</label><input type="number" id="timeSecs" min="0" max="59"
-                        value="0"></div>
-            </div>
-
-            <div class="power-grid">
-                <button type="button" class="btn-primary" onclick="sendPowerCommand('shutdown')"><span
-                        class="power-icon">🔌</span> Shutdown</button>
-                <button type="button" onclick="sendPowerCommand('restart')"><span class="power-icon">↻</span>
-                    Restart</button>
-                <button type="button" onclick="sendPowerCommand('sleep')"><span class="power-icon">🌙</span>
-                    Sleep</button>
-                <button type="button" onclick="sendPowerCommand('hibernate')"><span class="power-icon">💾</span>
-                    Hibernate</button>
-                <button type="button" class="btn-cancel" onclick="sendPowerCommand('cancel')">Cancel</button>
-            </div>
-        </details>
-
+  <div class="container">
+    <div class="header">
+      <h1>Wiremote</h1>
+      <div id="statusBadge" class="status-badge">
+        <div class="dot"></div>
+        <span id="statusText">Offline</span>
+      </div>
     </div>
 
-    <script src="app.js?v=25"></script>
+    <!-- MEDIA (Now Playing + Global + Web) -->
+    <div class="card-wrapper">
+      <details class="card-dropdown" open>
+        <summary>MEDIA</summary>
+
+        <!-- Now Playing Area -->
+        <div id="nowPlayingCard">
+          <div id="npEmpty" class="np-empty">
+            Nothing there...
+          </div>
+          <div class="np-row" id="npContent" style="display: none">
+            <div class="np-art" id="npArt"><span class="np-art-emoji">🎵</span></div>
+            <div class="np-meta">
+              <div class="np-title" id="npTitle">Unknown</div>
+              <div class="np-artist" id="npArtist"></div>
+              <div class="np-status" id="npStatus"></div>
+            </div>
+          </div>
+          <hr class="card-divider" />
+        </div>
+
+        <!-- Player Controls -->
+        <div class="media-grid">
+          <button type="button" id="btnMediaPrev">⏮</button>
+          <button type="button" id="btnWebLeft">−15s</button>
+          <button type="button" class="play-btn" id="btnMediaPlay">⏯</button>
+          <button type="button" id="btnWebRight">+15s</button>
+          <button type="button" id="btnMediaNext">⏭</button>
+        </div>
+      </details>
+    </div>
+
+    <!-- AUDIO & DISPLAY -->
+    <div class="card-wrapper">
+      <details class="card-dropdown" open>
+        <summary id="audioDisplayTabs">
+          <div class="tabs-container">
+            <span id="tabAudio" class="tab-link" style="text-decoration: underline; margin-left: -8px;">AUDIO</span>
+            <span style="opacity: 0.4; font-weight: 300">//</span>
+            <span id="tabDisplay" class="tab-link" style="text-decoration: none; opacity: 0.6;">DISPLAY</span>
+          </div>
+        </summary>
+
+        <div id="tabContentContainer">
+          <!-- AUDIO CONTENT -->
+          <div id="contentAudio">
+            <!-- Master Volume -->
+            <div class="sub-title">Master</div>
+            <div class="master-vol-row">
+              <input id="slider" type="range" min="0" max="100" value="50" />
+              <div class="volume-number" id="volumeDisplay">--%</div>
+            </div>
+
+            <hr class="card-divider" />
+
+            <!-- Output Device -->
+            <details class="dropdown-details">
+              <summary>Output</summary>
+              <div id="deviceList" class="device-list">
+                <div class="hint">…</div>
+              </div>
+            </details>
+
+            <!-- Volume Mixer -->
+            <details class="dropdown-details mb-0">
+              <summary>Mixer</summary>
+              <div id="sessionList" class="session-list">
+                <div class="hint">No active apps</div>
+              </div>
+            </details>
+          </div>
+
+          <!-- DISPLAY CONTENT -->
+          <div id="contentDisplay" style="display: none">
+            <div class="sub-title">Brightness</div>
+            <div class="master-vol-row" id="brightnessContainer">
+              <input id="brightnessSlider" type="range" min="0" max="100" value="50" />
+              <div class="volume-number" id="brightnessDisplay" style="white-space: nowrap">
+                --%
+              </div>
+            </div>
+
+            <hr class="card-divider" id="brightnessDivider" />
+
+            <details class="dropdown-details my-8">
+              <summary>Output</summary>
+              <div id="displayList" class="device-list">
+                <div class="hint">…</div>
+              </div>
+            </details>
+
+            <details class="dropdown-details mb-12">
+              <summary>Primary</summary>
+              <select id="primaryMonitorSelect" class="custom-select"></select>
+            </details>
+            <details class="dropdown-details mb-0">
+              <summary>Mode</summary>
+              <select id="projectionModeSelect" class="custom-select">
+                <option value="extend" selected>Extend</option>
+                <option value="clone">Clone</option>
+              </select>
+            </details>
+          </div>
+        </div>
+      </details>
+    </div>
+
+    <!-- CONTROLS -->
+    <div class="card-wrapper">
+      <details class="card-dropdown">
+        <summary>CONTROLS</summary>
+
+        <div id="touchpad" class="touchpad-area">
+          <span class="touchpad-text">TOUCHPAD</span>
+          <div class="touchpad-buttons">
+            <button type="button" id="btnLeftClick">L</button>
+            <button type="button" id="btnMiddleClick">M</button>
+            <button type="button" id="btnRightClick">R</button>
+          </div>
+        </div>
+
+        <div class="sub-title sens-title">Sensitivity</div>
+        <div class="master-vol-row sens-row">
+          <input id="sensSlider" type="range" min="0" max="10" step="0.1" value="5.0" />
+          <div class="volume-number" id="sensValue">5.0x</div>
+        </div>
+
+        <button type="button" id="btnKeyboard" class="btn-keyboard">
+          Keyboard
+        </button>
+
+        <input type="text" id="hiddenKeyboard" class="hidden-input" inputmode="text" autocomplete="off"
+          autocorrect="off" spellcheck="false" />
+      </details>
+    </div>
+
+    <!-- POWER -->
+    <div class="card-wrapper">
+      <details id="powerDetails" class="card-dropdown">
+        <summary class="power-summary" style="display: block">
+          <div style="
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+              ">
+            <span>POWER</span>
+            <span id="timerBadge" class="timer-badge" style="display: none;"></span>
+            <span class="power-arrow">▼</span>
+          </div>
+        </summary>
+        <div class="timer-row">
+          <div class="timer-col">
+            <label>Hours</label><input type="number" id="timeHours" min="0" value="0" />
+          </div>
+          <div class="timer-col">
+            <label>Minutes</label><input type="number" id="timeMins" min="0" max="59" value="0" />
+          </div>
+          <div class="timer-col">
+            <label>Seconds</label><input type="number" id="timeSecs" min="0" max="59" value="0" />
+          </div>
+        </div>
+
+        <div class="power-grid">
+          <button type="button" class="btn-primary" onclick="sendPowerCommand('shutdown')">
+            <span class="power-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"
+                fill="currentColor">
+                <path
+                  d="M480-80q-83 0-156-31.5T197-197q-54-54-85.5-127T80-480q0-84 31.5-156.5T197-763l56 56q-44 44-68.5 102T160-480q0 134 93 227t227 93q134 0 227-93t93-227q0-67-24.5-125T707-707l56-56q54 54 85.5 126.5T880-480q0 83-31.5 156T763-197q-54 54-127 85.5T480-80Zm-40-360v-440h80v440h-80Z" />
+              </svg>
+            </span>
+            Shutdown
+          </button>
+          <button type="button" onclick="sendPowerCommand('sleep')">
+            <span class="power-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"
+                fill="currentColor">
+                <path
+                  d="M484-80q-84 0-157.5-32t-128-86.5Q144-253 112-326.5T80-484q0-146 93-257.5T410-880q-18 99 11 193.5T521-521q71 71 165.5 100T880-410q-26 144-138 237T484-80Zm0-80q88 0 163-44t118-121q-86-8-163-43.5T464-465q-61-61-97-138t-43-163q-77 43-120.5 118.5T160-484q0 135 94.5 229.5T484-160Zm-20-305Z" />
+              </svg>
+            </span>
+            Sleep
+          </button>
+          <button type="button" onclick="sendPowerCommand('restart')">
+            <span class="power-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"
+                fill="currentColor">
+                <path
+                  d="M480-160q-134 0-227-93t-93-227q0-134 93-227t227-93q69 0 132 28.5T720-690v-110h80v280H520v-80h168q-32-56-87.5-88T480-720q-100 0-170 70t-70 170q0 100 70 170t170 70q77 0 139-44t87-116h84q-28 106-114 173t-196 67Z" />
+              </svg>
+            </span>
+            Restart
+          </button>
+          <button type="button" onclick="sendPowerCommand('hibernate')">
+            <span class="power-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"
+                fill="currentColor">
+                <path
+                  d="M840-680v480q0 33-23.5 56.5T760-120H200q-33 0-56.5-23.5T120-200v-560q0-33 23.5-56.5T200-840h480l160 160Zm-80 34L646-760H200v560h560v-446ZM565-275q35-35 35-85t-35-85q-35-35-85-35t-85 35q-35 35-35 85t35 85q35 35 85 35t85-35ZM240-560h360v-160H240v160Zm-40-86v446-560 114Z" />
+              </svg>
+            </span>
+            Hibernate
+          </button>
+          <button type="button" onclick="sendPowerCommand('restart_bios')">
+            <span class="power-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"
+                fill="currentColor">
+                <path
+                  d="M522-80v-82q34-5 66.5-18t61.5-34l56 58q-42 32-88 51.5T522-80Zm-80 0Q304-98 213-199.5T122-438q0-75 28.5-140.5t77-114q48.5-48.5 114-77T482-798h6l-62-62 56-58 160 160-160 160-56-56 64-64h-8q-117 0-198.5 81.5T202-438q0 104 68 182.5T442-162v82Zm322-134-58-56q21-29 34-61.5t18-66.5h82q-5 50-24.5 96T764-214Zm76-264h-82q-5-34-18-66.5T706-606l58-56q32 39 51 86t25 98Z" />
+              </svg>
+            </span>
+            Restart to BIOS
+          </button>
+          <button type="button" class="btn-cancel" onclick="sendPowerCommand('cancel')">
+            <span class="power-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" height="20px" viewBox="0 -960 960 960" width="20px"
+                fill="currentColor">
+                <path
+                  d="m256-200-56-56 224-224-224-224 56-56 224 224 224-224 56 56-224 224 224 224-56 56-224-224-224 224Z" />
+              </svg>
+            </span>
+            Cancel
+          </button>
+        </div>
+      </details>
+    </div>
+
+    <!-- MISCELLANEOUS -->
+    <div class="card-wrapper">
+      <details class="card-dropdown">
+        <summary>MISCELLANEOUS</summary>
+        <div class="misc-container">
+          <!-- Theme Sub-Menu (like Primary) -->
+          <details class="dropdown-details">
+            <summary>THEME</summary>
+            <select id="themeSelect" class="custom-select">
+              <option value="dark" selected>Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </details>
+
+          <!-- Borders Sub-Menu -->
+          <details class="dropdown-details">
+            <summary>BORDER</summary>
+            <div class="misc-sub-container">
+              <div class="misc-row misc-row-inline">
+                <span>Visibility</span>
+                <select id="borderVisibilitySelect" class="misc-select">
+                  <option value="off">Off</option>
+                  <option value="animated" selected>Animated</option>
+                  <option value="full">Full</option>
+                </select>
+              </div>
+
+              <div class="misc-row misc-row-inline" id="borderSpeedRow">
+                <span>Animation Speed</span>
+                <select id="borderSpeedSelect" class="misc-select">
+                  <option value="slow" selected>Slow</option>
+                  <option value="normal">Normal</option>
+                  <option value="fast">Fast</option>
+                </select>
+              </div>
+
+              <div class="misc-row misc-row-inline" id="borderModeRow">
+                <span>Animation Mode</span>
+                <select id="borderModeSelect" class="misc-select">
+                  <option value="rush">Rush</option>
+                  <option value="sync" selected>Sync</option>
+                </select>
+              </div>
+            </div>
+          </details>
+
+          <!-- Accent Sub-Menu (like Mixer) -->
+          <details class="dropdown-details mb-0">
+            <summary>ACCENT</summary>
+            <div class="misc-sub-container">
+              <div class="misc-row misc-row-inline">
+                <span>Rainbow Accent</span>
+                <label class="toggle-switch">
+                  <input type="checkbox" id="rainbowToggle" />
+                  <span class="toggle-slider"></span>
+                </label>
+              </div>
+
+              <div id="colorControlsGroup" class="misc-controls-group">
+                <div class="misc-row" id="hueRow">
+                  <div class="misc-label">
+                    <span>Hue</span>
+                    <span id="hueValDisplay" class="misc-val-badge">42°</span>
+                  </div>
+                  <input type="range" id="hueSlider" min="0" max="360" value="42" />
+                </div>
+
+                <div class="misc-row" id="satRow">
+                  <div class="misc-label">
+                    <span>Saturation</span>
+                    <span id="satValDisplay" class="misc-val-badge">70%</span>
+                  </div>
+                  <input type="range" id="satSlider" min="0" max="100" value="70" />
+                </div>
+
+                <div class="misc-row" id="lightRow">
+                  <div class="misc-label">
+                    <span>Lightness</span>
+                    <span id="lightValDisplay" class="misc-val-badge">55%</span>
+                  </div>
+                  <input type="range" id="lightSlider" min="10" max="90" value="55" />
+                </div>
+
+                <button type="button" id="btnDefaultAccent" class="misc-btn-default">
+                  Default Accent (#b0914f)
+                </button>
+              </div>
+            </div>
+          </details>
+        </div>
+      </details>
+    </div>
+  </div>
+
+  <script src="app.js?v=1"></script>
 </body>
 
 </html>

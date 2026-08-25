@@ -38,7 +38,8 @@ namespace PCRemote
         const uint INPUT_MOUSE = 0; const uint INPUT_KEYBOARD = 1;
         const uint KEYEVENTF_EXTENDEDKEY = 0x0001; const uint KEYEVENTF_KEYUP = 0x0002; const uint KEYEVENTF_UNICODE = 0x0004;
         const uint MOUSEEVENTF_MOVE = 0x0001; const uint MOUSEEVENTF_LEFTDOWN = 0x0002; const uint MOUSEEVENTF_LEFTUP = 0x0004;
-        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008; const uint MOUSEEVENTF_RIGHTUP = 0x0010; const uint MOUSEEVENTF_WHEEL = 0x0800;
+        const uint MOUSEEVENTF_RIGHTDOWN = 0x0008; const uint MOUSEEVENTF_RIGHTUP = 0x0010; const uint MOUSEEVENTF_MIDDLEDOWN = 0x0020;
+        const uint MOUSEEVENTF_MIDDLEUP = 0x0040; const uint MOUSEEVENTF_WHEEL = 0x0800;
         #endregion
 
         #region Virtual Keys
@@ -53,6 +54,11 @@ namespace PCRemote
 
         class MouseAccumulator { public double X; public double Y; }
         static readonly ConcurrentDictionary<Guid, MouseAccumulator> _mouseAcc = new();
+
+        public static void Init()
+        {
+            RegisterCommands();
+        }
 
         public static async Task KeyboardKey(ushort key, bool extended = false)
         {
@@ -113,8 +119,8 @@ namespace PCRemote
         public static async Task MouseClick(string buttonStr = "left")
         {
             var button = ParseButton(buttonStr);
-            uint down = button == MouseButton.Right ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_LEFTDOWN;
-            uint up = button == MouseButton.Right ? MOUSEEVENTF_RIGHTUP : MOUSEEVENTF_LEFTUP;
+            uint down = button == MouseButton.Right ? MOUSEEVENTF_RIGHTDOWN : (button == MouseButton.Middle ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_LEFTDOWN);
+            uint up = button == MouseButton.Right ? MOUSEEVENTF_RIGHTUP : (button == MouseButton.Middle ? MOUSEEVENTF_MIDDLEUP : MOUSEEVENTF_LEFTUP);
 
             var inpDown = new INPUT { type = INPUT_MOUSE, u = new INPUT_UNION { mi = new MOUSEINPUT { dwFlags = down } } };
             SendInput(1, new[] { inpDown }, Marshal.SizeOf<INPUT>());
@@ -130,10 +136,23 @@ namespace PCRemote
             var button = ParseButton(buttonStr);
             uint flag = button == MouseButton.Right
                 ? (isDown ? MOUSEEVENTF_RIGHTDOWN : MOUSEEVENTF_RIGHTUP)
-                : (isDown ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP);
+                : (button == MouseButton.Middle
+                    ? (isDown ? MOUSEEVENTF_MIDDLEDOWN : MOUSEEVENTF_MIDDLEUP)
+                    : (isDown ? MOUSEEVENTF_LEFTDOWN : MOUSEEVENTF_LEFTUP));
 
             var inp = new INPUT { type = INPUT_MOUSE, u = new INPUT_UNION { mi = new MOUSEINPUT { dwFlags = flag } } };
             SendInput(1, new[] { inp }, Marshal.SizeOf<INPUT>());
+        }
+
+        private static void RegisterCommands()
+        {
+            Server.RegisterCommand("mouse_move", (s, r) => { var dx = r.TryGetProperty("dx", out var dxProp) ? dxProp.GetDouble() : 0.0; var dy = r.TryGetProperty("dy", out var dyProp) ? dyProp.GetDouble() : 0.0; MouseMove(s.ConnectionInfo.Id, dx, dy); return Task.CompletedTask; });
+            Server.RegisterCommand("mouse_scroll", (s, r) => { MouseScroll(r.TryGetProperty("dy", out var dyScroll) ? (int)dyScroll.GetDouble() : 0); return Task.CompletedTask; });
+            Server.RegisterCommand("mouse_down", (s, r) => { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; MouseToggle(btn, true); Logger.Log("MOUSE", $"{btn} down", ConsoleColor.Green); return Task.CompletedTask; });
+            Server.RegisterCommand("mouse_up", (s, r) => { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; MouseToggle(btn, false); Logger.Log("MOUSE", $"{btn} up", ConsoleColor.Green); return Task.CompletedTask; });
+            Server.RegisterCommand("mouse_click", (s, r) => { var btn = r.TryGetProperty("button", out var b) ? (b.GetString() ?? "left") : "left"; Logger.Log("MOUSE", $"{btn} click", ConsoleColor.Green); return MouseClick(btn); });
+            Server.RegisterCommand("type_text", (s, r) => { var text = r.TryGetProperty("text", out var txt) ? (txt.GetString() ?? "") : ""; TypeText(text); Logger.Log("TYPE", $"{text.Length} char(s)", ConsoleColor.Green); return Task.CompletedTask; });
+            Server.RegisterCommand("key_press", (s, r) => { var key = r.GetProperty("key").GetString(); if (key == "enter") { Logger.Log("KEY", "enter", ConsoleColor.Green); return KeyboardKey(VK_RETURN); } else if (key == "backspace") { Logger.Log("KEY", "backspace", ConsoleColor.Green); return KeyboardKey(VK_BACK); } return Task.CompletedTask; });
         }
     }
 }

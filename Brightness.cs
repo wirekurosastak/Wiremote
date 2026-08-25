@@ -10,6 +10,7 @@ namespace PCRemote
         
         public static void Init()
         {
+            RegisterCommands();
             try
             {
                 var query = new WqlEventQuery("SELECT * FROM __InstanceModificationEvent WITHIN 2 WHERE TargetInstance ISA 'WmiMonitorBrightness'");
@@ -19,7 +20,7 @@ namespace PCRemote
             }
             catch (Exception ex)
             {
-                // Asztali gépeken gyakran nincs WmiMonitorBrightness, ez nem feltétlen kritikus hiba.
+                // Desktop computers often lack WmiMonitorBrightness, so this is not necessarily a critical error.
                 Logger.Log("BRIGHT", $"Watcher init skipped (Not supported or error): {ex.Message}", ConsoleColor.DarkGray);
             }
         }
@@ -45,7 +46,8 @@ namespace PCRemote
             try
             {
                 using var searcher = new ManagementObjectSearcher("root\\WMI", "SELECT CurrentBrightness FROM WmiMonitorBrightness");
-                foreach (ManagementObject o in searcher.Get())
+                using var collection = searcher.Get();
+                foreach (ManagementObject o in collection)
                 {
                     using (o)
                     {
@@ -55,7 +57,7 @@ namespace PCRemote
             }
             catch (ManagementException)
             {
-                // Nincs WMI fényerő támogatás (pl. asztali monitor)
+                // No WMI brightness support (e.g., desktop monitor)
             }
             catch (Exception ex)
             {
@@ -64,24 +66,30 @@ namespace PCRemote
             return (false, 0);
         }
 
+        static ManagementObjectSearcher? _setBrightnessSearcher;
+
         public static void SetBrightness(int percent)
         {
             percent = Math.Max(0, Math.Min(100, percent));
-            try
+            Task.Run(() =>
             {
-                using var searcher = new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
-                foreach (ManagementObject o in searcher.Get())
+                try
                 {
-                    using (o)
+                    _setBrightnessSearcher ??= new ManagementObjectSearcher("root\\WMI", "SELECT * FROM WmiMonitorBrightnessMethods");
+                    using var collection = _setBrightnessSearcher.Get();
+                    foreach (ManagementObject o in collection)
                     {
-                        o.InvokeMethod("WmiSetBrightness", new object[] { (uint)1, (byte)percent });
+                        using (o)
+                        {
+                            o.InvokeMethod("WmiSetBrightness", new object[] { (uint)1, (byte)percent });
+                        }
                     }
                 }
-            }
-            catch (Exception ex)
-            {
-                Logger.Log("BRIGHT", $"SetBrightness failed: {ex.Message}", ConsoleColor.Red);
-            }
+                catch (Exception ex)
+                {
+                    Logger.Log("BRIGHT", $"SetBrightness failed: {ex.Message}", ConsoleColor.Red);
+                }
+            });
         }
 
         public static void SendBrightness(IWebSocketConnection socket)
@@ -91,7 +99,7 @@ namespace PCRemote
             try { socket.Send(msg); } catch (Exception ex) { Logger.Log("BRIGHT", $"WS send error: {ex.Message}", ConsoleColor.Red); }
         }
 
-        // ÚJ: Memóriaszivárgás megelőzése
+        // NEW: Prevent memory leaks
         public static void Cleanup()
         {
             if (_watcher != null)
@@ -111,6 +119,18 @@ namespace PCRemote
                     _watcher = null;
                 }
             }
+
+            if (_setBrightnessSearcher != null)
+            {
+                try { _setBrightnessSearcher.Dispose(); } catch { }
+                finally { _setBrightnessSearcher = null; }
+            }
+        }
+
+        private static void RegisterCommands()
+        {
+            Server.RegisterCommand("get_brightness", (s, r) => { SendBrightness(s); return Task.CompletedTask; });
+            Server.RegisterCommand("set_brightness", (s, r) => { var v = r.GetProperty("value").GetInt32(); SetBrightness(v); Logger.Log("BRIGHT", $"→ {Math.Max(0, Math.Min(100, v))}%", ConsoleColor.DarkYellow); return Task.CompletedTask; });
         }
     }
 }

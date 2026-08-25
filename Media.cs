@@ -11,6 +11,15 @@ namespace PCRemote
         static GlobalSystemMediaTransportControlsSessionManager? _mediaManager;
         static GlobalSystemMediaTransportControlsSession? _mediaSession;
 
+        static byte[]? _currentThumbnailBytes;
+        static string _currentThumbnailMime = "image/png";
+        static long _thumbnailTimestamp = 0;
+
+        public static (byte[]? bytes, string mime) GetCurrentThumbnail()
+        {
+            return (_currentThumbnailBytes, _currentThumbnailMime);
+        }
+
         static readonly TypedEventHandler<GlobalSystemMediaTransportControlsSession, MediaPropertiesChangedEventArgs>
             _mediaPropsHandler = (s, e) => { _ = BroadcastNowPlayingAsync(); };
         static readonly TypedEventHandler<GlobalSystemMediaTransportControlsSession, PlaybackInfoChangedEventArgs>
@@ -18,6 +27,7 @@ namespace PCRemote
 
         public static async Task InitAsync()
         {
+            RegisterCommands();
             try
             {
                 _mediaManager = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
@@ -83,7 +93,7 @@ namespace PCRemote
                     info?.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing
                         ? "playing" : "paused";
 
-                string? thumb = await ReadThumbnailAsync(props?.Thumbnail);
+                string? thumb = await UpdateThumbnailAsync(props?.Thumbnail);
 
                 return JsonSerializer.Serialize(new
                 {
@@ -102,14 +112,22 @@ namespace PCRemote
             }
         }
 
-        static async Task<string?> ReadThumbnailAsync(IRandomAccessStreamReference? thumbRef)
+        static async Task<string?> UpdateThumbnailAsync(IRandomAccessStreamReference? thumbRef)
         {
-            if (thumbRef == null) return null;
+            if (thumbRef == null) 
+            {
+                _currentThumbnailBytes = null;
+                return null;
+            }
             try
             {
                 using var stream = await thumbRef.OpenReadAsync();
                 uint size = (uint)stream.Size;
-                if (size == 0 || size > 2_000_000) return null;
+                if (size == 0 || size > 2_000_000) 
+                {
+                    _currentThumbnailBytes = null;
+                    return null;
+                }
 
                 using var reader = new DataReader(stream.GetInputStreamAt(0));
                 await reader.LoadAsync(size);
@@ -118,11 +136,17 @@ namespace PCRemote
 
                 string mime = (bytes.Length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xD8)
                     ? "image/jpeg" : "image/png";
-                return $"data:{mime};base64,{Convert.ToBase64String(bytes)}";
+                
+                _currentThumbnailBytes = bytes;
+                _currentThumbnailMime = mime;
+                _thumbnailTimestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+                return $"/thumbnail?ts={_thumbnailTimestamp}";
             }
             catch (Exception ex)
             {
                 Logger.Log("MEDIA", $"Thumbnail read error: {ex.Message}", ConsoleColor.DarkGray);
+                _currentThumbnailBytes = null;
                 return null;
             }
         }
@@ -212,7 +236,7 @@ namespace PCRemote
             try { _ = socket.Send(json); } catch { }
         }
 
-        // ÚJ: Eseménykezelők leválasztása a szivárgás ellen
+        // NEW: Detach event handlers to prevent leaks
         public static void Cleanup()
         {
             try
@@ -234,6 +258,15 @@ namespace PCRemote
             {
                 Logger.Log("MEDIA", $"Cleanup error: {ex.Message}", ConsoleColor.DarkGray);
             }
+        }
+
+        private static void RegisterCommands()
+        {
+            Server.RegisterCommand("media_play_pause", (s, r) => MediaCommand(MediaAction.PlayPause));
+            Server.RegisterCommand("media_previous", (s, r) => MediaCommand(MediaAction.Previous));
+            Server.RegisterCommand("media_next", (s, r) => MediaCommand(MediaAction.Next));
+            Server.RegisterCommand("web_left", (s, r) => MediaSeek(-15));
+            Server.RegisterCommand("web_right", (s, r) => MediaSeek(15));
         }
     }
 }

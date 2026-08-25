@@ -15,7 +15,13 @@ namespace PCRemote
         static MMDeviceNotificationClient? _notifier;
 
         static readonly SessionEventHandler _sessionHandler = new();
-        static readonly Dictionary<uint, AudioSessionControl> _sessionCache = new();
+        class SessionInfo
+        {
+            public AudioSessionControl Control { get; }
+            public string Name { get; }
+            public SessionInfo(AudioSessionControl control, string name) { Control = control; Name = name; }
+        }
+        static readonly Dictionary<uint, SessionInfo> _sessionCache = new();
 
         class SessionEventHandler : IAudioSessionEventsHandler
         {
@@ -47,6 +53,7 @@ namespace PCRemote
 
         public static void Init()
         {
+            RegisterCommands();
             try
             {
                 _device = _enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia);
@@ -129,8 +136,16 @@ namespace PCRemote
                     uint pid = s.GetProcessID;
                     if (!_sessionCache.ContainsKey(pid))
                     {
-                        _sessionCache[pid] = s;
-                        s.RegisterEventClient(_sessionHandler);
+                        string? name = GetSessionName(s, pid);
+                        if (!string.IsNullOrEmpty(name))
+                        {
+                            _sessionCache[pid] = new SessionInfo(s, name);
+                            s.RegisterEventClient(_sessionHandler);
+                        }
+                        else
+                        {
+                            s.Dispose();
+                        }
                     }
                 }
                 catch (Exception ex)
@@ -149,16 +164,16 @@ namespace PCRemote
                 {
                     try
                     {
-                        if (kv.Value.State == AudioSessionState.AudioSessionStateExpired)
+                        if (kv.Value.Control.State == AudioSessionState.AudioSessionStateExpired)
                         {
-                            kv.Value.UnRegisterEventClient(_sessionHandler);
-                            kv.Value.Dispose();
+                            kv.Value.Control.UnRegisterEventClient(_sessionHandler);
+                            kv.Value.Control.Dispose();
                             toRemove.Add(kv.Key);
                         }
                     }
                     catch
                     {
-                        toRemove.Add(kv.Key); // Ha hiba van a COM objektummal, dobjuk el.
+                        toRemove.Add(kv.Key); // If there is an error with the COM object, discard it.
                     }
                 }
                 foreach (var id in toRemove) _sessionCache.Remove(id);
@@ -173,8 +188,8 @@ namespace PCRemote
                 {
                     try
                     {
-                        kv.Value.UnRegisterEventClient(_sessionHandler);
-                        kv.Value.Dispose();
+                        kv.Value.Control.UnRegisterEventClient(_sessionHandler);
+                        kv.Value.Control.Dispose();
                     }
                     catch (Exception ex)
                     {
@@ -194,7 +209,7 @@ namespace PCRemote
                 if (_device != null)
                 {
                     try { _device.AudioEndpointVolume.OnVolumeNotification -= _volHandler; }
-                    catch { } // Itt elfogadható az elnyelés, mert épp megsemmisült az eszköz
+                    catch { } // Suppressing exceptions is acceptable here because the device is destroyed
                 }
 
                 try 
@@ -231,8 +246,9 @@ namespace PCRemote
                     bool mute = _device.AudioEndpointVolume.Mute;
                     return (vol, mute);
                 }
-                catch
+                catch (Exception ex)
                 {
+                    Logger.Log("AUDIO", $"GetVolumeState error: {ex.Message}", ConsoleColor.DarkGray);
                     return (50, false);
                 }
             }
@@ -298,7 +314,10 @@ namespace PCRemote
                 var dn = s.DisplayName;
                 if (!string.IsNullOrWhiteSpace(dn) && !dn.StartsWith("@")) name = dn;
             }
-            catch { }
+            catch (Exception ex) 
+            { 
+                Logger.Log("AUDIO", $"GetSessionName display name error: {ex.Message}", ConsoleColor.DarkGray); 
+            }
 
             if (string.IsNullOrEmpty(name))
             {
@@ -307,7 +326,15 @@ namespace PCRemote
                     using var p = Process.GetProcessById((int)pid);
                     name = p.ProcessName;
                 }
-                catch { } // Process is already dead or access denied
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    // Access Denied (e.g. elevated processes), ignore to prevent spam
+                }
+                catch (Exception ex)
+                {
+                    // Process is already dead or other error
+                    Logger.Log("AUDIO", $"GetSessionName process name error: {ex.Message}", ConsoleColor.DarkGray);
+                }
             }
 
             if (string.IsNullOrEmpty(name)) name = $"PID {pid}";
@@ -330,15 +357,13 @@ namespace PCRemote
                 {
                     try
                     {
-                        var s = kv.Value;
+                        var info = kv.Value;
+                        var s = info.Control;
                         if (s.State == AudioSessionState.AudioSessionStateExpired) continue;
-
-                        string? sName = GetSessionName(s, kv.Key);
-                        if (string.IsNullOrEmpty(sName)) continue;
 
                         int vol = (int)Math.Round(s.SimpleAudioVolume.Volume * 100);
                         bool mute = s.SimpleAudioVolume.Mute;
-                        list.Add(new { id = kv.Key, name = sName, volume = vol, muted = mute });
+                        list.Add(new { id = kv.Key, name = info.Name, volume = vol, muted = mute });
                     }
                     catch (Exception ex)
                     {
@@ -361,10 +386,11 @@ namespace PCRemote
             percent = Math.Max(0, Math.Min(100, percent));
             lock (_lock)
             {
-                if (_sessionCache.TryGetValue(pid, out var s))
+                if (_sessionCache.TryGetValue(pid, out var info))
                 {
                     try
                     {
+                        var s = info.Control;
                         s.SimpleAudioVolume.Volume = percent / 100f;
                         if (percent == 0) s.SimpleAudioVolume.Mute = true;
                         else if (s.SimpleAudioVolume.Mute) s.SimpleAudioVolume.Mute = false;
@@ -378,10 +404,11 @@ namespace PCRemote
         {
             lock (_lock)
             {
-                if (_sessionCache.TryGetValue(pid, out var s))
+                if (_sessionCache.TryGetValue(pid, out var info))
                 {
                     try
                     {
+                        var s = info.Control;
                         s.SimpleAudioVolume.Mute = !s.SimpleAudioVolume.Mute;
                         return s.SimpleAudioVolume.Mute;
                     }
@@ -478,6 +505,19 @@ namespace PCRemote
                 _enumerator?.Dispose();
             } 
             catch (Exception ex) { Logger.Log("AUDIO", $"Enumerator cleanup error: {ex.Message}", ConsoleColor.DarkGray); }
+        }
+
+        private static void RegisterCommands()
+        {
+            Server.RegisterCommand("volume_up", (s, r) => { VolumeChange(5); var vs = BroadcastVolume(); Logger.Log("VOLUME", $"up  → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; });
+            Server.RegisterCommand("volume_down", (s, r) => { VolumeChange(-5); var vs = BroadcastVolume(); Logger.Log("VOLUME", $"down → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; });
+            Server.RegisterCommand("set_volume", (s, r) => { SetVolume(r.GetProperty("value").GetInt32()); var vs = BroadcastVolume(); Logger.Log("VOLUME", $"set  → {vs.volume}%", ConsoleColor.Yellow); return Task.CompletedTask; });
+            Server.RegisterCommand("mute", (s, r) => { ToggleMute(); var vs = BroadcastVolume(); Logger.Log("VOLUME", vs.muted ? "muted" : "unmuted", ConsoleColor.Yellow); return Task.CompletedTask; });
+            Server.RegisterCommand("get_sessions", (s, r) => { SendSessions(s); return Task.CompletedTask; });
+            Server.RegisterCommand("set_session_volume", (s, r) => { var id = (uint)r.GetProperty("id").GetInt64(); int val = r.GetProperty("value").GetInt32(); SetSessionVolume(id, val); Logger.Log("APPVOL", $"pid {id} → {val}%", ConsoleColor.Yellow); return Task.CompletedTask; });
+            Server.RegisterCommand("session_mute", (s, r) => { var id = (uint)r.GetProperty("id").GetInt64(); bool m = ToggleSessionMute(id); BroadcastSessions(); Logger.Log("APPVOL", $"pid {id} {(m ? "muted" : "unmuted")}", ConsoleColor.Yellow); return Task.CompletedTask; });
+            Server.RegisterCommand("get_devices", (s, r) => { SendDevices(s); return Task.CompletedTask; });
+            Server.RegisterCommand("set_device", (s, r) => { var id = r.GetProperty("id").GetString() ?? ""; SetDefaultDevice(id); Logger.Log("DEVICE", "switched output", ConsoleColor.Cyan); return Task.CompletedTask; });
         }
     }
 }

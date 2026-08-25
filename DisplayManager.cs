@@ -89,37 +89,61 @@ namespace PCRemote
             public bool IsPrimary { get; set; }
         }
 
+        public static void Init()
+        {
+            RegisterCommands();
+        }
+
+        static Dictionary<string, string>? _cachedWmiNames = null;
+        static readonly object _wmiCacheLock = new object();
+
         public static List<DisplayInfo> GetDisplays()
         {
             var displays = new List<DisplayInfo>();
             var seenHwIds = new Dictionary<string, DisplayInfo>(StringComparer.OrdinalIgnoreCase);
             
-            var wmiNames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-            try
+            if (_cachedWmiNames == null)
             {
-                using var searcher = new System.Management.ManagementObjectSearcher("root\\WMI", "SELECT InstanceName, UserFriendlyName FROM WmiMonitorID");
-                foreach (System.Management.ManagementObject mo in searcher.Get())
+                lock (_wmiCacheLock)
                 {
-                    using (mo)
+                    if (_cachedWmiNames == null)
                     {
-                        string instanceName = (string)mo["InstanceName"];
-                        ushort[] nameData = (ushort[])mo["UserFriendlyName"];
-                        string friendlyName = "";
-                        foreach (ushort c in nameData)
+                        var tempCache = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                        try
                         {
-                            if (c == 0) break;
-                            friendlyName += (char)c;
+                            using var searcher = new System.Management.ManagementObjectSearcher("root\\WMI", "SELECT InstanceName, UserFriendlyName FROM WmiMonitorID");
+                            using var collection = searcher.Get();
+                            foreach (System.Management.ManagementObject mo in collection)
+                            {
+                                using (mo)
+                                {
+                                    string instanceName = (string)mo["InstanceName"];
+                                    ushort[] nameData = (ushort[])mo["UserFriendlyName"];
+                                    string friendlyName = "";
+                                    foreach (ushort c in nameData)
+                                    {
+                                        if (c == 0) break;
+                                        friendlyName += (char)c;
+                                    }
+                                    
+                                    string key = instanceName.Replace('\\', '#');
+                                    int lastUnderscore = key.LastIndexOf('_');
+                                    if (lastUnderscore > 0) key = key.Substring(0, lastUnderscore);
+                                    
+                                    tempCache[key] = friendlyName;
+                                }
+                            }
                         }
-                        
-                        string key = instanceName.Replace('\\', '#');
-                        int lastUnderscore = key.LastIndexOf('_');
-                        if (lastUnderscore > 0) key = key.Substring(0, lastUnderscore);
-                        
-                        wmiNames[key] = friendlyName;
+                        catch (Exception ex)
+                        {
+                            Logger.Log("DISPLAY", $"WMI cache error: {ex.Message}", ConsoleColor.DarkGray);
+                        }
+                        _cachedWmiNames = tempCache;
                     }
                 }
             }
-            catch { }
+            
+            var wmiNames = _cachedWmiNames;
 
             uint i = 0;
             DISPLAY_DEVICE dd = new DISPLAY_DEVICE();
@@ -149,7 +173,7 @@ namespace PCRemote
                         {
                             string displayName = monitor.DeviceString;
                             string devId = monitor.DeviceID;
-                            string hwId = null;
+                            string? hwId = null;
                             
                             if (!string.IsNullOrWhiteSpace(devId) && devId.StartsWith(@"\\?\"))
                             {
@@ -404,6 +428,15 @@ namespace PCRemote
             {
                 Logger.Log("DISPLAY", $"Broadcast error: {ex.Message}", ConsoleColor.Red);
             }
+        }
+
+        private static void RegisterCommands()
+        {
+            Server.RegisterCommand("display_switch", (s, r) => { var mode = r.GetProperty("mode").GetString() ?? ""; string arg = mode switch { "clone" => "/clone", "extend" => "/extend", _ => "" }; if (!string.IsNullOrEmpty(arg)) { try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("DisplaySwitch.exe", arg) { UseShellExecute = true, CreateNoWindow = true }); } catch (Exception ex) { Logger.Log("DISPLAY", $"Switch process failed: {ex.Message}", ConsoleColor.Red); } Logger.Log("DISPLAY", $"switch {mode}", ConsoleColor.Cyan); } return Task.CompletedTask; });
+            Server.RegisterCommand("displays_off", (s, r) => { Interop.SendMessage((IntPtr)0xFFFF, 0x0112, (IntPtr)0xF170, (IntPtr)2); Logger.Log("DISPLAY", "turn off", ConsoleColor.Cyan); return Task.CompletedTask; });
+            Server.RegisterCommand("get_displays", (s, r) => { SendDisplays(s); return Task.CompletedTask; });
+            Server.RegisterCommand("set_display", (s, r) => { var id = r.GetProperty("id").GetString() ?? ""; var active = r.GetProperty("active").GetBoolean(); ToggleDisplay(id, active); BroadcastDisplays(); Logger.Log("DISPLAY", $"{id} -> {(active ? "on" : "off")}", ConsoleColor.Cyan); return Task.CompletedTask; });
+            Server.RegisterCommand("set_primary_display", (s, r) => { var id = r.GetProperty("id").GetString() ?? ""; SetPrimaryDisplay(id); BroadcastDisplays(); Logger.Log("DISPLAY", $"Primary monitor changed", ConsoleColor.Cyan); return Task.CompletedTask; });
         }
     }
 }

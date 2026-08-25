@@ -19,6 +19,7 @@ namespace PCRemote
 
         public static void Init()
         {
+            RegisterCommands();
             try
             {
                 SystemEvents.SessionEnding += OnSessionEnding;
@@ -53,6 +54,7 @@ namespace PCRemote
 
         public static void HandleCommand(string action, int seconds)
         {
+            seconds = Math.Max(0, seconds);
             lock (_powerLock)
             {
                 _timerCts?.Cancel();
@@ -198,6 +200,11 @@ namespace PCRemote
                 catch { }
                 finally { _timerCts = null; }
             }
+        }
+
+        private static void RegisterCommands()
+        {
+            Server.RegisterCommand("power", (s, r) => { var action = r.GetProperty("action").GetString() ?? ""; var seconds = r.TryGetProperty("seconds", out var secs) ? secs.GetInt32() : 0; if (action == "cancel") seconds = 0; Logger.Log("POWER", seconds > 0 ? $"{action} in {seconds}s" : action, ConsoleColor.Red); HandleCommand(action, seconds); return Task.CompletedTask; });
         }
     }
 }

@@ -47,9 +47,11 @@ namespace PCRemote
             AudioService.Init();
             BrightnessService.Init();
             PowerService.Init();
+            InputService.Init();
+            DisplayManager.Init();
             _ = MediaService.InitAsync();
 
-            _ = Server.StartHttpServer(cts.Token);
+            _ = HttpServer.Start(cts.Token);
             Server.StartWebSocketServer();
 
             try { await Task.Delay(-1, cts.Token); } 
@@ -57,11 +59,12 @@ namespace PCRemote
 
             Console.WriteLine("\nExiting...");
             Server.Stop();
+            HttpServer.Stop();
             
-            // Tisztességes erőforrás-felszabadítás
+            // Proper resource cleanup
             AudioService.Cleanup();
             PowerService.Cleanup();
-            BrightnessService.Cleanup(); // Hozzáadva a WMI szivárgások miatt
+            BrightnessService.Cleanup(); // Added to prevent WMI leaks
         }
 
         static bool IsAdministrator()
@@ -90,27 +93,22 @@ namespace PCRemote
                 RunCmd($"advfirewall firewall delete rule name=\"RemoteControl WS {Server.WS_PORT}\"");
                 RunCmd($"advfirewall firewall add rule name=\"RemoteControl WS {Server.WS_PORT}\" dir=in action=allow protocol=TCP localport={Server.WS_PORT}");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                Logger.Log("FIREWALL", $"Failed to setup firewall rules: {ex.Message}", ConsoleColor.Red);
+            }
         }
 
         static string GetLocalIp()
         {
-            var ipv4Addresses = NetworkInterface.GetAllNetworkInterfaces()
+            var ip = NetworkInterface.GetAllNetworkInterfaces()
                 .Where(n => n.OperationalStatus == OperationalStatus.Up && n.NetworkInterfaceType != NetworkInterfaceType.Loopback)
                 .SelectMany(n => n.GetIPProperties().UnicastAddresses)
                 .Where(a => a.Address.AddressFamily == AddressFamily.InterNetwork)
-                .Select(a => a.Address);
+                .Select(a => a.Address.ToString())
+                .FirstOrDefault(ipStr => ipStr.StartsWith("192.168.") || ipStr.StartsWith("10.") || ipStr.StartsWith("172."));
 
-            foreach (var ip in ipv4Addresses)
-            {
-                var bytes = ip.GetAddressBytes();
-                bool isPrivate = bytes[0] == 10 ||
-                                (bytes[0] == 172 && bytes[1] >= 16 && bytes[1] <= 31) ||
-                                (bytes[0] == 192 && bytes[1] == 168);
-
-                if (isPrivate) return ip.ToString();
-            }
-            return "127.0.0.1";
+            return ip ?? "127.0.0.1";
         }
     }
 }

@@ -3,7 +3,7 @@ using System.Net.Sockets;
 using System.Security.Principal;
 using System.Diagnostics;
 
-namespace PCRemote
+namespace Winremote
 {
     class Program
     {

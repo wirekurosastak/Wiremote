@@ -4,7 +4,7 @@ using Windows.Foundation;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 
-namespace PCRemote
+namespace Winremote
 {
     public static class MediaService
     {

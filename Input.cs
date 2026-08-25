@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 
-namespace PCRemote
+namespace Winremote
 {
     public static class InputService
     {

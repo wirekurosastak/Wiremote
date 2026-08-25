@@ -1,4 +1,4 @@
-namespace PCRemote
+namespace Winremote
 {
     public static class Logger
     {

@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace PCRemote
+namespace Winremote
 {
     public static class HttpServer
     {

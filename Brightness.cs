@@ -2,7 +2,7 @@ using System.Management;
 using System.Text.Json;
 using Fleck;
 
-namespace PCRemote
+namespace Winremote
 {
     public static class BrightnessService
     {

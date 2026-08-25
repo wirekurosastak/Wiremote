@@ -1,6 +1,6 @@
 using System.Net;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class HttpServer
     {

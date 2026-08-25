@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using Fleck;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class DisplayManager
     {

@@ -1,4 +1,4 @@
-namespace Winremote
+namespace Wiremote
 {
     public static class Logger
     {

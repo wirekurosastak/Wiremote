@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class Interop
     {

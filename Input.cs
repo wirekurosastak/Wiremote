@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class InputService
     {

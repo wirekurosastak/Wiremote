@@ -5,7 +5,7 @@ using Fleck;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class AudioService
     {

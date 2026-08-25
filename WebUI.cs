@@ -1,6 +1,6 @@
 using System.Reflection;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class WebUI
     {
@@ -13,9 +13,9 @@ namespace Winremote
             var resources = assembly.GetManifestResourceNames();
             foreach (var res in resources)
             {
-                if (res.StartsWith("Winremote.wwwroot."))
+                if (res.StartsWith("Wiremote.wwwroot."))
                 {
-                    string fileName = res.Substring("Winremote.wwwroot.".Length);
+                    string fileName = res.Substring("Wiremote.wwwroot.".Length);
                     LoadAndCache(fileName, res, assembly);
                 }
             }

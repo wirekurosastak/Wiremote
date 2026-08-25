@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using Fleck;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class Server
     {

@@ -5,7 +5,7 @@ using System.Text.Json;
 using Microsoft.Win32;
 using Fleck;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class PowerService
     {

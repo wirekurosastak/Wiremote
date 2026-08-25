@@ -4,7 +4,7 @@ using Windows.Foundation;
 using Windows.Media.Control;
 using Windows.Storage.Streams;
 
-namespace Winremote
+namespace Wiremote
 {
     public static class MediaService
     {

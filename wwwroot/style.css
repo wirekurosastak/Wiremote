@@ -183,18 +183,22 @@ h1 {
     --spot-x: 0%;
     --spot-y: 0%;
   }
+
   25% {
     --spot-x: 100%;
     --spot-y: 0%;
   }
+
   50% {
     --spot-x: 100%;
     --spot-y: 100%;
   }
+
   75% {
     --spot-x: 0%;
     --spot-y: 100%;
   }
+
   100% {
     --spot-x: 0%;
     --spot-y: 0%;
@@ -216,8 +220,8 @@ h1 {
   position: absolute;
   inset: 0;
   background: var(--accent);
-  -webkit-mask: radial-gradient(circle 120px at var(--spot-x) var(--spot-y), #000 20%, transparent 100%);
-  mask: radial-gradient(circle 120px at var(--spot-x) var(--spot-y), #000 20%, transparent 100%);
+  -webkit-mask: radial-gradient(circle var(--spot-size, 60px) at var(--spot-x) var(--spot-y), #000 20%, transparent 100%);
+  mask: radial-gradient(circle var(--spot-size, 60px) at var(--spot-x) var(--spot-y), #000 20%, transparent 100%);
   animation: border-spotlight var(--border-speed, 6s) linear infinite;
   border-radius: 20px;
   z-index: -1;
@@ -694,6 +698,11 @@ button.active {
   color: #000000 !important;
   font-weight: 600;
   border: none;
+  transform: none;
+}
+
+.device-btn.active:active {
+  transform: scale(0.95);
 }
 
 .device-btn.active .dev-check,
@@ -801,6 +810,7 @@ button.active {
   -webkit-text-fill-color: transparent !important;
 }
 
+
 .np-meta {
   min-width: 0;
   flex: 1;
@@ -858,6 +868,7 @@ button.active {
   -webkit-background-clip: text !important;
   -webkit-text-fill-color: transparent !important;
 }
+
 
 .np-empty {
   display: flex;
@@ -1098,7 +1109,7 @@ input:checked+.toggle-slider:before {
 .rainbow-mode .play-btn,
 .rainbow-mode .btn-keyboard,
 .rainbow-mode .device-btn.active,
-.rainbow-mode input:checked + .toggle-slider,
+.rainbow-mode input:checked+.toggle-slider,
 .rainbow-mode .btn-primary {
   background-image: var(--rainbow-grad) !important;
   background-attachment: fixed !important;
@@ -1131,13 +1142,11 @@ input:checked+.toggle-slider:before {
 }
 
 .rainbow-mode input[type="range"]::-webkit-slider-runnable-track {
-  background: linear-gradient(
-    to right,
-    transparent 0%,
-    transparent var(--progress, 50%),
-    var(--surface3) var(--progress, 50%),
-    var(--surface3) 100%
-  ), var(--rainbow-grad) fixed 0 0 / 100vw 100vh !important;
+  background: linear-gradient(to right,
+      transparent 0%,
+      transparent var(--progress, 50%),
+      var(--surface3) var(--progress, 50%),
+      var(--surface3) 100%), var(--rainbow-grad) fixed 0 0 / 100vw 100vh !important;
   -webkit-mask-image: none !important;
   mask-image: none !important;
 }
@@ -1149,9 +1158,18 @@ input:checked+.toggle-slider:before {
   background-size: 100vw 100vh !important;
 }
 
-/* RAINBOW MODE BORDER VISIBILITY & MODE COMBINATIONS */
-.rainbow-mode.border-animated.border-sync .card-wrapper::before,
-.border-animated.border-sync.rainbow-mode .card-wrapper::before {
+/* HUE SLIDER SPECTRUM TRACK */
+#hueSlider::-webkit-slider-runnable-track {
+  background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000) !important;
+}
+
+#hueSlider::-moz-range-track {
+  background: linear-gradient(to right, #ff0000, #ffff00, #00ff00, #00ffff, #0000ff, #ff00ff, #ff0000) !important;
+}
+
+/* RAINBOW MODE BORDER VISIBILITY COMBINATIONS */
+.rainbow-mode.border-animated .card-wrapper::before,
+.border-animated.rainbow-mode .card-wrapper::before {
   background-image: var(--rainbow-grad) !important;
   background-attachment: fixed !important;
   background-position: 0 0 !important;
@@ -1160,62 +1178,18 @@ input:checked+.toggle-slider:before {
   width: 100% !important;
   height: 100% !important;
   margin: 0 !important;
-  animation: border-spotlight var(--border-speed, 6s) linear infinite !important;
-  -webkit-mask: radial-gradient(circle 120px at var(--spot-x) var(--spot-y), #000 20%, transparent 100%) !important;
-  mask: radial-gradient(circle 120px at var(--spot-x) var(--spot-y), #000 20%, transparent 100%) !important;
+  animation: border-spotlight var(--border-speed, 6s) linear infinite;
+  -webkit-mask: radial-gradient(circle var(--spot-size, 60px) at var(--spot-x) var(--spot-y), #000 20%, transparent 100%) !important;
+  mask: radial-gradient(circle var(--spot-size, 60px) at var(--spot-x) var(--spot-y), #000 20%, transparent 100%) !important;
   border-radius: 20px !important;
 }
 
-.rainbow-mode.border-animated.border-rush .card-wrapper::before,
-.border-animated.border-rush.rainbow-mode .card-wrapper::before {
-  background: linear-gradient(
-    90deg,
-    hsl(0, 85%, 60%),
-    hsl(60, 85%, 60%),
-    hsl(120, 85%, 60%),
-    hsl(180, 85%, 60%),
-    hsl(240, 85%, 60%),
-    hsl(300, 85%, 60%),
-    hsl(360, 85%, 60%)
-  ) !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  animation: border-spotlight var(--border-speed, 6s) linear infinite !important;
-  -webkit-mask: radial-gradient(circle 120px at var(--spot-x) var(--spot-y), #000 20%, transparent 100%) !important;
-  mask: radial-gradient(circle 120px at var(--spot-x) var(--spot-y), #000 20%, transparent 100%) !important;
-  border-radius: 20px !important;
-}
-
-.rainbow-mode.border-full.border-sync .card-wrapper::before,
-.border-full.border-sync.rainbow-mode .card-wrapper::before {
+.rainbow-mode.border-full .card-wrapper::before,
+.border-full.rainbow-mode .card-wrapper::before {
   background-image: var(--rainbow-grad) !important;
   background-attachment: fixed !important;
   background-position: 0 0 !important;
   background-size: 100vw 100vh !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  margin: 0 !important;
-  animation: none !important;
-  -webkit-mask: none !important;
-  mask: none !important;
-  border-radius: 20px !important;
-}
-
-.rainbow-mode.border-full.border-rush .card-wrapper::before,
-.border-full.border-rush.rainbow-mode .card-wrapper::before {
-  background: linear-gradient(
-    90deg,
-    hsl(0, 85%, 60%),
-    hsl(60, 85%, 60%),
-    hsl(120, 85%, 60%),
-    hsl(180, 85%, 60%),
-    hsl(240, 85%, 60%),
-    hsl(300, 85%, 60%),
-    hsl(360, 85%, 60%)
-  ) !important;
   inset: 0 !important;
   width: 100% !important;
   height: 100% !important;

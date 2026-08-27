@@ -212,7 +212,7 @@ namespace Wiremote
 
         public static async Task MediaSeek(int deltaSeconds)
         {
-            if ((DateTime.UtcNow - _lastSeekTime).TotalMilliseconds < 500)
+            if ((DateTime.UtcNow - _lastSeekTime).TotalMilliseconds < 400)
                 return;
             _lastSeekTime = DateTime.UtcNow;
 
@@ -222,11 +222,22 @@ namespace Wiremote
                 try
                 {
                     var timeline = session.GetTimelineProperties();
+                    var info = session.GetPlaybackInfo();
                     var end = timeline.EndTime;
 
                     if (end > TimeSpan.Zero)
                     {
-                        var target = timeline.Position + TimeSpan.FromSeconds(deltaSeconds);
+                        TimeSpan currentPos = timeline.Position;
+                        if (info != null && info.PlaybackStatus == GlobalSystemMediaTransportControlsSessionPlaybackStatus.Playing)
+                        {
+                            var elapsed = DateTimeOffset.UtcNow - timeline.LastUpdatedTime;
+                            if (elapsed > TimeSpan.Zero)
+                            {
+                                currentPos += elapsed;
+                            }
+                        }
+
+                        var target = currentPos + TimeSpan.FromSeconds(deltaSeconds);
                         if (target < timeline.StartTime) target = timeline.StartTime;
                         if (target > end) target = end;
 
@@ -243,8 +254,13 @@ namespace Wiremote
                 }
             }
 
-            await InputService.KeyboardKey(deltaSeconds < 0 ? InputService.VK_LEFT : InputService.VK_RIGHT);
-            Logger.Log("MEDIA", $"seek {deltaSeconds:+#;-#}s → arrow key", ConsoleColor.Magenta);
+            ushort key = deltaSeconds < 0 ? InputService.VK_LEFT : InputService.VK_RIGHT;
+            for (int i = 0; i < 3; i++)
+            {
+                await InputService.KeyboardKey(key);
+                if (i < 2) await Task.Delay(30);
+            }
+            Logger.Log("MEDIA", $"seek {deltaSeconds:+#;-#}s → arrow keys (x3)", ConsoleColor.Magenta);
         }
 
         static async Task BroadcastNowPlayingAsync() => Server.Broadcast(await BuildNowPlayingJsonAsync());

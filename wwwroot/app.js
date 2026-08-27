@@ -802,7 +802,9 @@ function renderDisplays(displays, mode) {
       UI.displayList.appendChild(btn);
     }
 
-    primarySelectHtml += `<option value="${d.id}" ${d.isPrimary ? "selected" : ""}>${displayName}</option>`;
+    if (d.isActive) {
+      primarySelectHtml += `<option value="${d.id}" ${d.isPrimary ? "selected" : ""}>${displayName}</option>`;
+    }
   });
 
   Object.keys(existingRows).forEach((id) => {
@@ -813,7 +815,8 @@ function renderDisplays(displays, mode) {
     primarySelect.innerHTML = primarySelectHtml;
   }
 
-  const hasMultiple = displays.length > 1;
+  const activeDisplayCount = displays.filter((d) => d.isActive).length;
+  const hasMultiple = activeDisplayCount > 1;
   if (primarySelect) {
     primarySelect.disabled = !hasMultiple;
     primarySelect.style.opacity = hasMultiple ? "1" : "0.5";
@@ -1071,7 +1074,7 @@ function stepRainbow(timestamp) {
 
   if (!lastRainbowTime || timestamp - lastRainbowTime >= 33) {
     lastRainbowTime = timestamp;
-    rainbowHue = (rainbowHue + rainbowSpeedStep) % 360;
+    rainbowHue = (rainbowHue - rainbowSpeedStep + 360) % 360;
     const h0 = rainbowHue;
     const h1 = (rainbowHue + 60) % 360;
     const h2 = (rainbowHue + 120) % 360;
@@ -1100,15 +1103,35 @@ const btnDefaultAccent = document.getElementById("btnDefaultAccent");
 const borderVisibilitySelect = document.getElementById("borderVisibilitySelect");
 const borderSpeedSelect = document.getElementById("borderSpeedSelect");
 const borderSpeedRow = document.getElementById("borderSpeedRow");
-const borderModeSelect = document.getElementById("borderModeSelect");
-const borderModeRow = document.getElementById("borderModeRow");
+
+function updateCardBorderSpotlights() {
+  document.querySelectorAll(".card-wrapper").forEach((card) => {
+    const h = card.clientHeight;
+    if (h === 0) return;
+    const spotSize = Math.min(80, Math.max(35, Math.round(h * 0.4)));
+    card.style.setProperty("--spot-size", `${spotSize}px`);
+  });
+}
+
+const borderResizeObserver = new ResizeObserver(() => {
+  requestAnimationFrame(updateCardBorderSpotlights);
+});
+document.querySelectorAll(".card-wrapper").forEach((c) => borderResizeObserver.observe(c));
+document.querySelectorAll("details").forEach((d) => d.addEventListener("toggle", () => {
+  setTimeout(updateCardBorderSpotlights, 30);
+}));
+window.addEventListener("resize", updateCardBorderSpotlights);
+updateCardBorderSpotlights();
 
 function applyCustomHSL(hue, sat, light) {
-  if (document.documentElement.classList.contains("rainbow-mode")) return;
   const h = parseInt(hue, 10);
   const s = parseInt(sat, 10);
   const l = parseInt(light, 10);
   const pointerL = Math.max(10, l - 15);
+
+  document.documentElement.style.setProperty("--slider-hue", `${h}`);
+
+  if (document.documentElement.classList.contains("rainbow-mode")) return;
 
   document.documentElement.style.setProperty("--accent", `hsl(${h}, ${s}%, ${l}%)`);
   document.documentElement.style.setProperty("--accent-pointer", `hsl(${h}, ${s}%, ${pointerL}%)`);
@@ -1119,31 +1142,25 @@ function updateColorSlidersFromStorage() {
   const s = localStorage.getItem("customSat") || "70";
   const l = localStorage.getItem("customLight") || "55";
 
-  if (hueSlider) hueSlider.value = h;
+  if (hueSlider) { hueSlider.value = h; updateSliderProgress(hueSlider); }
   if (hueValDisplay) hueValDisplay.textContent = `${h}°`;
-  if (satSlider) satSlider.value = s;
+  if (satSlider) { satSlider.value = s; updateSliderProgress(satSlider); }
   if (satValDisplay) satValDisplay.textContent = `${s}%`;
-  if (lightSlider) lightSlider.value = l;
+  if (lightSlider) { lightSlider.value = l; updateSliderProgress(lightSlider); }
   if (lightValDisplay) lightValDisplay.textContent = `${l}%`;
 
-  if (localStorage.getItem("rainbowAccent") !== "true" && localStorage.getItem("customHue") !== null) {
-    applyCustomHSL(h, s, l);
-  }
+  applyCustomHSL(h, s, l);
 }
 
 function applyBorderSettings() {
   const vis = borderVisibilitySelect ? borderVisibilitySelect.value : "animated";
-  const mode = borderModeSelect ? borderModeSelect.value : "sync";
 
   localStorage.setItem("borderVisibility", vis);
-  localStorage.setItem("borderMode", mode);
 
-  document.documentElement.classList.remove(
-    "border-off", "border-animated", "border-full",
-    "border-rush", "border-sync"
-  );
-  document.documentElement.classList.add(`border-${vis}`, `border-${mode}`);
+  document.documentElement.classList.remove("border-off", "border-animated", "border-full");
+  document.documentElement.classList.add(`border-${vis}`);
   updateSpeedDisableState();
+  updateCardBorderSpotlights();
 }
 
 function applySpeedSettings() {
@@ -1165,16 +1182,7 @@ function applySpeedSettings() {
 function updateSpeedDisableState() {
   const vis = borderVisibilitySelect ? borderVisibilitySelect.value : "animated";
   const isRainbow = localStorage.getItem("rainbowAccent") === "true";
-
-  const isModeEnabled = (vis === "animated" || vis === "full") && isRainbow;
   const isSpeedEnabled = (vis === "animated") || isRainbow;
-
-  if (borderModeSelect) {
-    borderModeSelect.disabled = !isModeEnabled;
-  }
-  if (borderModeRow) {
-    borderModeRow.classList.toggle("disabled", !isModeEnabled);
-  }
 
   if (borderSpeedSelect) {
     borderSpeedSelect.disabled = !isSpeedEnabled;
@@ -1222,6 +1230,7 @@ function bindColorSlider(slider, display, storageKey, suffix) {
   if (!slider) return;
   slider.addEventListener("input", (e) => {
     const val = e.target.value;
+    updateSliderProgress(slider);
     if (display) display.textContent = `${val}${suffix}`;
     localStorage.setItem(storageKey, val);
     const h = hueSlider ? hueSlider.value : "42";
@@ -1248,21 +1257,18 @@ if (btnDefaultAccent) {
   });
 }
 
-// Initial Border Setup (Defaults: Visibility = animated, Mode = sync, Speed = slow)
-if (borderVisibilitySelect && borderModeSelect) {
+// Initial Border Setup (Defaults: Visibility = animated, Speed = slow)
+if (borderVisibilitySelect) {
   const savedVis = localStorage.getItem("borderVisibility") || "animated";
-  const savedMode = localStorage.getItem("borderMode") || "sync";
   const savedSpeed = localStorage.getItem("borderSpeed") || "slow";
 
   borderVisibilitySelect.value = savedVis;
-  borderModeSelect.value = savedMode;
   if (borderSpeedSelect) borderSpeedSelect.value = savedSpeed;
 
   applyBorderSettings();
   applySpeedSettings();
 
   borderVisibilitySelect.addEventListener("change", applyBorderSettings);
-  borderModeSelect.addEventListener("change", applyBorderSettings);
   if (borderSpeedSelect) {
     borderSpeedSelect.addEventListener("change", applySpeedSettings);
   }

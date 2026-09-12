@@ -1,4 +1,15 @@
 let socket = null;
+let isAuthenticated = false;
+let reconnectTimer = null;
+let pingWatchdogTimer = null;
+
+// Parse and store token if provided in URL, then strip from address bar
+const urlParams = new URLSearchParams(window.location.search);
+const tokenInUrl = urlParams.get("token");
+if (tokenInUrl) {
+  localStorage.setItem("wiremote_token", tokenInUrl);
+  window.history.replaceState({}, document.title, window.location.pathname);
+}
 
 const UI = {
   badge: document.getElementById("statusBadge"),
@@ -121,8 +132,107 @@ function updateTimerDisplay() {
   UI.timerBadge.style.display = "inline";
 }
 
+let offlineQueue = [];
+
+function queueOfflineCommand(payload) {
+  const cmd = payload.command;
+  // NEVER buffer or queue sliders offline (volume, brightness, session volumes, mouse moves).
+  // When connecting, the remote MUST ALWAYS receive and adopt the PC's actual volume state,
+  // and NEVER overwrite it with an offline or stale slider value!
+  if (
+    cmd === "set_volume" ||
+    cmd === "set_brightness" ||
+    cmd === "set_session_volume" ||
+    cmd === "mouse_move" ||
+    cmd === "mouse_scroll"
+  ) {
+    return;
+  }
+  // Only queue momentary media/power button clicks (e.g. mute, play/pause within 2s)
+  offlineQueue.push({ ...payload, timestamp: Date.now() });
+  if (offlineQueue.length > 5) {
+    offlineQueue.shift();
+  }
+}
+
+function flushOfflineQueue() {
+  if (!socket || socket.readyState !== WebSocket.OPEN || !isAuthenticated) return;
+
+  // Only flush discrete button clicks from the last 2 seconds
+  const now = Date.now();
+  const recent = offlineQueue.filter((c) => now - c.timestamp < 2000);
+  offlineQueue = [];
+  recent.forEach((c) => {
+    const { timestamp, ...cleanPayload } = c;
+    try { socket.send(JSON.stringify(cleanPayload)); } catch (e) { }
+  });
+}
+
+function showAuthModal(errMsg = "") {
+  const modal = document.getElementById("authModal");
+  const errEl = document.getElementById("authError");
+  const inputEl = document.getElementById("authTokenInput");
+  if (modal) modal.style.display = "flex";
+  if (errEl) {
+    if (errMsg) {
+      errEl.textContent = errMsg;
+      errEl.style.display = "block";
+    } else {
+      errEl.style.display = "none";
+    }
+  }
+  if (inputEl) inputEl.focus();
+}
+
+function hideAuthModal() {
+  const modal = document.getElementById("authModal");
+  const errEl = document.getElementById("authError");
+  if (modal) modal.style.display = "none";
+  if (errEl) errEl.style.display = "none";
+}
+
+// Bind Auth Form
+document.addEventListener("DOMContentLoaded", () => {
+  const authForm = document.getElementById("authForm");
+  const authTokenInput = document.getElementById("authTokenInput");
+  if (authForm && authTokenInput) {
+    authForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const val = authTokenInput.value.trim();
+      if (!val) return;
+      localStorage.setItem("wiremote_token", val);
+      hideAuthModal();
+      if (socket) {
+        try { socket.close(); } catch (err) { }
+      }
+      connect();
+    });
+  }
+});
+
+function clearReconnectTimer() {
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect() {
+  clearReconnectTimer();
+  // Fast reconnect: 250ms if active/visible, 2000ms if suspended in background
+  const delay = document.visibilityState === "visible" ? 250 : 2000;
+  reconnectTimer = setTimeout(connect, delay);
+}
+
+function ensureConnected() {
+  if (!socket || socket.readyState === WebSocket.CLOSED || socket.readyState === WebSocket.CLOSING) {
+    clearReconnectTimer();
+    connect();
+  }
+}
+
 function setConnectionStatus(connected) {
-  if (connected) {
+  if (connected && isAuthenticated) {
     UI.badge.classList.add("connected");
     UI.statusText.textContent = "Online";
   } else {
@@ -132,30 +242,77 @@ function setConnectionStatus(connected) {
 }
 
 function connect() {
+  clearReconnectTimer();
+  if (socket && (socket.readyState === WebSocket.CONNECTING || socket.readyState === WebSocket.OPEN)) {
+    return;
+  }
+
   const protocol = location.protocol === "https:" ? "wss" : "ws";
-  socket = new WebSocket(`${protocol}://${location.hostname}:8766`);
-  socket.onopen = () => setConnectionStatus(true);
-  socket.onclose = () => {
-    setConnectionStatus(false);
-    setTimeout(connect, 2000);
-  };
-  socket.onerror = () => {
+  try {
+    socket = new WebSocket(`${protocol}://${location.hostname}:8766`);
+  } catch (err) {
+    scheduleReconnect();
+    return;
+  }
+
+  socket.onopen = () => {
+    // Immediately authenticate with stored token
+    const token = localStorage.getItem("wiremote_token") || "";
     try {
-      socket.close();
+      socket.send(JSON.stringify({ command: "auth", token: token }));
     } catch (e) { }
   };
+
+  socket.onclose = () => {
+    isAuthenticated = false;
+    setConnectionStatus(false);
+    scheduleReconnect();
+  };
+
+  socket.onerror = () => {
+    try { socket.close(); } catch (e) { }
+  };
+
   socket.onmessage = (event) => {
     try {
       const data = JSON.parse(event.data);
+
+      if (data.type === "pong") {
+        clearTimeout(pingWatchdogTimer);
+        return;
+      }
+
+      if (data.type === "auth_ok") {
+        clearTimeout(pingWatchdogTimer);
+        if (data.token) {
+          localStorage.setItem("wiremote_token", data.token);
+        }
+        isAuthenticated = true;
+        setConnectionStatus(true);
+        hideAuthModal();
+        flushOfflineQueue();
+        return;
+      }
+
+      if (data.type === "auth_error" || data.type === "auth_required") {
+        clearTimeout(pingWatchdogTimer);
+        isAuthenticated = false;
+        setConnectionStatus(false);
+        showAuthModal(data.message || "Invalid or missing token");
+        return;
+      }
+
       if (data.type === "volume") {
         const val = Number(data.value);
-        UI.slider.value = val;
-        updateSliderProgress(UI.slider);
-        UI.volumeDisplay.textContent = val + "%";
-        const row = UI.slider.closest(".master-vol-row");
-        if (row) {
-          if (data.muted) row.classList.add("muted");
-          else row.classList.remove("muted");
+        if (!isVolumeDragging) {
+          UI.slider.value = val;
+          updateSliderProgress(UI.slider);
+          UI.volumeDisplay.textContent = val + "%";
+          const row = UI.slider.closest(".master-vol-row");
+          if (row) {
+            if (data.muted) row.classList.add("muted");
+            else row.classList.remove("muted");
+          }
         }
       } else if (data.type === "sessions") renderSessions(data.sessions || []);
       else if (data.type === "devices") renderDevices(data.devices || []);
@@ -261,8 +418,15 @@ function applyMarquee() {
 })();
 
 function command(commandName, extraProps = {}) {
-  if (!socket || socket.readyState !== WebSocket.OPEN) return;
-  socket.send(JSON.stringify({ command: commandName, ...extraProps }));
+  const payload = { command: commandName, ...extraProps };
+  if (socket && socket.readyState === WebSocket.OPEN) {
+    try {
+      socket.send(JSON.stringify(payload));
+      return;
+    } catch (e) { }
+  }
+  queueOfflineCommand(payload);
+  ensureConnected();
 }
 
 function bindButton(id, cmd, extraProps = {}) {
@@ -673,6 +837,12 @@ UI.pad.addEventListener("touchend", (e) => {
     lastScrollY = null;
   }
 });
+
+let isVolumeDragging = false;
+UI.slider.addEventListener("touchstart", () => { isVolumeDragging = true; }, { passive: true });
+UI.slider.addEventListener("mousedown", () => { isVolumeDragging = true; });
+window.addEventListener("touchend", () => { isVolumeDragging = false; }, { passive: true });
+window.addEventListener("mouseup", () => { isVolumeDragging = false; });
 
 const sendVolume = throttle((val) => command("set_volume", { value: val }), 50);
 UI.slider.addEventListener("input", function () {
@@ -1305,5 +1475,65 @@ if (rainbowToggle) {
     setRainbowState(e.target.checked);
   });
 }
+
+// SCREEN WAKE LOCK (Keep screen awake while Wiremote is open)
+let wakeLockSentinel = null;
+async function requestWakeLock() {
+  if (!("wakeLock" in navigator)) return;
+  if (document.visibilityState !== "visible") return;
+  const enabled = localStorage.getItem("keepScreenAwake") !== "false";
+  if (!enabled) return;
+
+  try {
+    if (!wakeLockSentinel) {
+      wakeLockSentinel = await navigator.wakeLock.request("screen");
+      wakeLockSentinel.addEventListener("release", () => {
+        wakeLockSentinel = null;
+      });
+    }
+  } catch (err) { }
+}
+
+async function releaseWakeLock() {
+  if (wakeLockSentinel) {
+    try { await wakeLockSentinel.release(); } catch (e) { }
+    wakeLockSentinel = null;
+  }
+}
+
+const wakeLockToggle = document.getElementById("wakeLockToggle");
+if (wakeLockToggle) {
+  const isAwake = localStorage.getItem("keepScreenAwake") !== "false";
+  wakeLockToggle.checked = isAwake;
+  if (isAwake) requestWakeLock();
+
+  wakeLockToggle.addEventListener("change", (e) => {
+    localStorage.setItem("keepScreenAwake", e.target.checked ? "true" : "false");
+    if (e.target.checked) requestWakeLock();
+    else releaseWakeLock();
+  });
+}
+
+// INSTANT WAKE-UP & VISIBILITY RECONNECTION HANDLERS
+function handleWakeUp() {
+  if (document.visibilityState === "visible") {
+    ensureConnected();
+    requestWakeLock();
+  } else {
+    releaseWakeLock();
+  }
+}
+
+document.addEventListener("visibilitychange", handleWakeUp);
+window.addEventListener("focus", handleWakeUp);
+window.addEventListener("pageshow", handleWakeUp);
+window.addEventListener("online", handleWakeUp);
+
+// Periodic keepalive ping while tab is active
+setInterval(() => {
+  if (document.visibilityState === "visible" && socket && socket.readyState === WebSocket.OPEN && isAuthenticated) {
+    try { socket.send(JSON.stringify({ command: "ping" })); } catch (e) { }
+  }
+}, 10000);
 
 connect();

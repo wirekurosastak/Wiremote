@@ -8,10 +8,24 @@
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Wiremote</title>
-  <link rel="stylesheet" href="style.css?v=110" />
+  <link rel="stylesheet" href="style.css?v=113" />
 </head>
 
 <body>
+  <!-- AUTH OVERLAY -->
+  <div id="authModal" class="auth-overlay" style="display: none;">
+    <div class="auth-card">
+      <div class="auth-lock-icon">🔒</div>
+      <h2 class="auth-title">Wiremote Auth</h2>
+      <p class="auth-desc">To prevent hijacking, enter the auth token shown in the PC console, or scan/open the URL containing the token.</p>
+      <form id="authForm" class="auth-form" onsubmit="return false;">
+        <input type="password" id="authTokenInput" class="auth-input" placeholder="Enter Token" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" />
+        <button type="submit" id="btnAuthSubmit" class="btn-primary auth-submit">Authorize</button>
+      </form>
+      <div id="authError" class="auth-error" style="display: none;"></div>
+    </div>
+  </div>
+
   <div class="container">
     <div class="header">
       <h1>Wiremote</h1>
@@ -262,6 +276,15 @@
             </select>
           </details>
 
+          <!-- Keep Screen Awake (Wake Lock) -->
+          <div class="misc-row misc-row-inline" style="padding: 10px 4px 12px 4px;">
+            <span style="font-size: 0.95rem; font-weight: 500;">Keep Screen Awake</span>
+            <label class="toggle-switch">
+              <input type="checkbox" id="wakeLockToggle" checked />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+
           <!-- Borders Sub-Menu -->
           <details class="dropdown-details">
             <summary>BORDER</summary>
@@ -334,7 +357,7 @@
     </div>
   </div>
 
-  <script src="app.js?v=110"></script>
+  <script src="app.js?v=113"></script>
 </body>
 
 </html>

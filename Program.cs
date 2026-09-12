@@ -31,8 +31,11 @@ namespace Wiremote
             Console.WriteLine("https://github.com/wirekurosastak/Wiremote");
             Console.WriteLine("==========================================\n");
 
+            Server.InitAuthToken();
+
             var ip = GetLocalIp();
-            Console.WriteLine($"Open on phone:   http://{ip}:{Server.HTTP_PORT}");
+            Console.WriteLine($"Open on phone:   http://{ip}:{Server.HTTP_PORT}/?token={Server.AuthToken}");
+            Console.WriteLine($"Auth Token:      {Server.AuthToken}");
             Console.WriteLine($"WebSocket:       ws://{ip}:{Server.WS_PORT}");
             Console.WriteLine();
             Console.WriteLine("Press CTRL+C to stop.\n");

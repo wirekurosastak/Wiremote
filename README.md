@@ -17,13 +17,14 @@ This tool was designed with a "KISS" (Keep It Simple, Stupid) philosophy in mind
 - **Embedded Static Assets**: All frontend files are embedded into the C# binary. The application compiles to a single executable.
 - **Direct OS Integration**: The backend relies on direct P/Invoke calls to `user32.dll` and simple static classes. No enterprise abstractions or over-engineered design patterns.
 
-## ⚠️ Security & Privacy Warning
+## Security & Token Authentication
 
-This application **DOES NOT** feature authentication, HTTPS, or any form of access control. It binds to all available network interfaces (`0.0.0.0`) on ports `8765` (HTTP) and `8766` (WebSocket).
-
-**Anyone on the same local network (Wi-Fi/LAN) can connect to this web UI and completely control your PC (including moving your mouse, changing your volume, or shutting down the machine).**
-
-**Do not run this application on public or untrusted networks.** It is designed exclusively for private home networks.
+Wiremote includes **Token-Based Authentication & Session Protection**:
+- On startup, a secure persistent authentication token is generated (stored locally in `wiremote.token`).
+- The terminal prints a direct link with your token: `http://<ip>:8765/?token=<TOKEN>`.
+- When opened on your phone, the token is automatically saved into the browser's `localStorage` and stripped from the address bar.
+- Any unauthenticated client on the network is blocked from sending mouse, keyboard, audio, or power commands.
+- **Single Active Controller**: Reconnecting cleanly takes over the session and prunes stale zombie connections.
 
 ## Getting Started
 
@@ -33,8 +34,9 @@ This application **DOES NOT** feature authentication, HTTPS, or any form of acce
    - If you do not run as Administrator, other devices on your network (like your phone) will not be able to connect.
 3. **Usage**:
    - Run the application (`dotnet run` or launch the compiled `.exe`).
-   - The console will display a URL (e.g., `http://192.168.1.50:8765`).
-   - Open that URL in your smartphone's web browser.
+   - The console will display a URL with your token (e.g., `http://192.168.1.50:8765/?token=a8b3c4d5...`).
+   - Open that URL in your smartphone's web browser once to pair it automatically.
+   - Includes **Instant Reconnect**, an **Offline Adjustment Buffer** (adjust volume even while reconnecting without dropped commands), and **Keep Screen Awake** support.
    - For the best experience on iOS/Android, you can "Add to Home Screen" to run it in a full-screen, app-like mode.
 
 ## Development

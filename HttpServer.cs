@@ -56,10 +56,7 @@ namespace Wiremote
                             var (buffer, contentType) = resource.Value;
                             response.ContentType = contentType;
                             response.ContentLength64 = buffer.Length;
-                            if (path == "/" || path == "/index.html")
-                                response.Headers.Add("Cache-Control", "no-cache");
-                            else
-                                response.Headers.Add("Cache-Control", "public, max-age=31536000");
+                            response.Headers.Add("Cache-Control", "no-cache, no-store, must-revalidate");
 
                             await response.OutputStream.WriteAsync(buffer, 0, buffer.Length);
                         }

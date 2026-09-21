@@ -2,6 +2,7 @@ using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Security.Principal;
 using System.Diagnostics;
+using System.Runtime.Versioning;
 
 namespace Wiremote
 {
@@ -9,15 +10,27 @@ namespace Wiremote
     {
         static async Task Main(string[] args)
         {
-            if (IsAdministrator())
+            if (OperatingSystem.IsLinux())
+            {
+                InitLinuxEnvironment();
+            }
+
+            if (OperatingSystem.IsWindows())
+            {
+                if (IsAdministrator())
+                {
+                    SetupFirewallAndHttp();
+                }
+                else
+                {
+                    Console.ForegroundColor = ConsoleColor.Yellow;
+                    Console.WriteLine("Warning: Not running as Administrator! If you cannot connect, run as Administrator once to configure firewall rules.");
+                    Console.ResetColor();
+                }
+            }
+            else if (OperatingSystem.IsLinux() && IsAdministrator())
             {
                 SetupFirewallAndHttp();
-            }
-            else
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("Warning: Not running as Administrator! If you cannot connect, run as Administrator once to configure firewall rules.");
-                Console.ResetColor();
             }
 
             Fleck.FleckLog.LogAction = (level, msg, ex) =>
@@ -73,6 +86,20 @@ namespace Wiremote
 
         static bool IsAdministrator()
         {
+            if (OperatingSystem.IsWindows())
+            {
+                return CheckWindowsAdmin();
+            }
+            if (OperatingSystem.IsLinux())
+            {
+                return Interop.geteuid() == 0;
+            }
+            return false;
+        }
+
+        [SupportedOSPlatform("windows")]
+        static bool CheckWindowsAdmin()
+        {
             using var identity = WindowsIdentity.GetCurrent();
             var principal = new WindowsPrincipal(identity);
             return principal.IsInRole(WindowsBuiltInRole.Administrator);
@@ -80,28 +107,40 @@ namespace Wiremote
 
         static void SetupFirewallAndHttp()
         {
-            try
+            if (OperatingSystem.IsWindows())
             {
-                void RunCmd(string args)
+                try
                 {
-                    using var p = Process.Start(new ProcessStartInfo("netsh", args) { CreateNoWindow = true, UseShellExecute = false });
-                    p?.WaitForExit();
+                    void RunCmd(string args)
+                    {
+                        using var p = Process.Start(new ProcessStartInfo("netsh", args) { CreateNoWindow = true, UseShellExecute = false });
+                        p?.WaitForExit();
+                    }
+
+                    RunCmd($"http delete urlacl url=http://*:{Server.HTTP_PORT}/");
+                    // Use Well-Known SID S-1-1-0 (Everyone) to support localized Windows OS (German, Spanish, etc.)
+                    RunCmd($"http add urlacl url=http://*:{Server.HTTP_PORT}/ user=\"S-1-1-0\"");
+                    RunCmd($"http add urlacl url=http://*:{Server.HTTP_PORT}/ user=Everyone");
+                    
+                    RunCmd($"advfirewall firewall delete rule name=\"RemoteControl HTTP {Server.HTTP_PORT}\"");
+                    RunCmd($"advfirewall firewall add rule name=\"RemoteControl HTTP {Server.HTTP_PORT}\" dir=in action=allow protocol=TCP localport={Server.HTTP_PORT}");
+
+                    RunCmd($"advfirewall firewall delete rule name=\"RemoteControl WS {Server.WS_PORT}\"");
+                    RunCmd($"advfirewall firewall add rule name=\"RemoteControl WS {Server.WS_PORT}\" dir=in action=allow protocol=TCP localport={Server.WS_PORT}");
                 }
-
-                RunCmd($"http delete urlacl url=http://*:{Server.HTTP_PORT}/");
-                // Use Well-Known SID S-1-1-0 (Everyone) to support localized Windows OS (German, Spanish, etc.)
-                RunCmd($"http add urlacl url=http://*:{Server.HTTP_PORT}/ user=\"S-1-1-0\"");
-                RunCmd($"http add urlacl url=http://*:{Server.HTTP_PORT}/ user=Everyone");
-                
-                RunCmd($"advfirewall firewall delete rule name=\"RemoteControl HTTP {Server.HTTP_PORT}\"");
-                RunCmd($"advfirewall firewall add rule name=\"RemoteControl HTTP {Server.HTTP_PORT}\" dir=in action=allow protocol=TCP localport={Server.HTTP_PORT}");
-
-                RunCmd($"advfirewall firewall delete rule name=\"RemoteControl WS {Server.WS_PORT}\"");
-                RunCmd($"advfirewall firewall add rule name=\"RemoteControl WS {Server.WS_PORT}\" dir=in action=allow protocol=TCP localport={Server.WS_PORT}");
+                catch (Exception ex)
+                {
+                    Logger.Log("FIREWALL", $"Failed to setup firewall rules: {ex.Message}", ConsoleColor.Red);
+                }
             }
-            catch (Exception ex)
+            else if (OperatingSystem.IsLinux())
             {
-                Logger.Log("FIREWALL", $"Failed to setup firewall rules: {ex.Message}", ConsoleColor.Red);
+                try
+                {
+                    using var p = Process.Start(new ProcessStartInfo("firewall-cmd", $"--add-port={Server.HTTP_PORT}/tcp --add-port={Server.WS_PORT}/tcp") { CreateNoWindow = true });
+                    p?.WaitForExit(1000);
+                }
+                catch { }
             }
         }
 
@@ -115,6 +154,64 @@ namespace Wiremote
                 .FirstOrDefault(ipStr => ipStr.StartsWith("192.168.") || ipStr.StartsWith("10.") || ipStr.StartsWith("172."));
 
             return ip ?? "127.0.0.1";
+        }
+
+        static void SetEnvBoth(string name, string value)
+        {
+            try
+            {
+                Environment.SetEnvironmentVariable(name, value);
+                Interop.setenv(name, value, 1);
+            }
+            catch { }
+        }
+
+        static void InitLinuxEnvironment()
+        {
+            try
+            {
+                uint uid = Interop.geteuid();
+                string runtimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") ?? $"/run/user/{uid}";
+                SetEnvBoth("XDG_RUNTIME_DIR", runtimeDir);
+
+                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+                {
+                    if (File.Exists(Path.Combine(runtimeDir, "wayland-0")))
+                        SetEnvBoth("WAYLAND_DISPLAY", "wayland-0");
+                    else if (File.Exists(Path.Combine(runtimeDir, "wayland-1")))
+                        SetEnvBoth("WAYLAND_DISPLAY", "wayland-1");
+                }
+
+                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))
+                {
+                    SetEnvBoth("DISPLAY", ":0");
+                }
+                else
+                {
+                    SetEnvBoth("DISPLAY", Environment.GetEnvironmentVariable("DISPLAY")!);
+                }
+
+                var authFiles = Directory.Exists(runtimeDir) 
+                    ? Directory.GetFiles(runtimeDir, "xauth_*").OrderByDescending(f => File.GetLastWriteTimeUtc(f)).ToArray()
+                    : Array.Empty<string>();
+
+                if (authFiles.Length > 0)
+                {
+                    SetEnvBoth("XAUTHORITY", authFiles[0]);
+                }
+                else
+                {
+                    string homeAuth = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".Xauthority");
+                    if (File.Exists(homeAuth))
+                        SetEnvBoth("XAUTHORITY", homeAuth);
+                }
+
+                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("QT_QPA_PLATFORM")))
+                {
+                    SetEnvBoth("QT_QPA_PLATFORM", "wayland;xcb");
+                }
+            }
+            catch { }
         }
     }
 }

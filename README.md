@@ -34,6 +34,8 @@ Wiremote includes **Token-Based Authentication & Session Protection**:
    - **Linux**: Run normally (`dotnet run` or launch binary). If you have an active firewall (such as `firewalld` or `ufw`), ensure ports 8765 and 8766 are allowed:
      - `sudo firewall-cmd --add-port=8765/tcp --add-port=8766/tcp --permanent && sudo firewall-cmd --reload`
      - or `sudo ufw allow 8765/tcp && sudo ufw allow 8766/tcp`
+   - **Linux (Automatic Build & System Startup / Autostart)**:
+     - Simply run `./setup.sh` in the repository root. It compiles a Release publish build, configures a systemd user service with autostart on system boot (linger), creates a `~/.local/bin/wiremote` command link, and starts the service.
 3. **Usage**:
    - Run the application (`dotnet run` or launch the compiled executable).
    - The console will display a URL with your token (e.g., `http://192.168.1.50:8765/?token=a8b3c4d5...`).

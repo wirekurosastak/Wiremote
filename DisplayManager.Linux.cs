@@ -19,6 +19,8 @@ namespace Wiremote
 
         private static bool _hasKscreenDoctor = true;
         private static bool _toolsChecked = false;
+        private static DateTime _lastToolCheck = DateTime.MinValue;
+        private static readonly TimeSpan ToolRecheckInterval = TimeSpan.FromSeconds(30);
         static readonly JsonSerializerOptions _jsonOpts = new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
 
         public static bool IsDisplayAvailable()
@@ -49,31 +51,29 @@ namespace Wiremote
         private static void EnsureToolsChecked()
         {
             if (_toolsChecked) return;
+            if (DateTime.UtcNow - _lastToolCheck < ToolRecheckInterval) return;
             if (!IsDisplayAvailable()) return;
+            _lastToolCheck = DateTime.UtcNow;
 
-            try
+            // Only a success is final. A failure (e.g. probed before the session's Wayland
+            // socket existed) falls back to xrandr for now and is retried later.
+            string test = RunCmd("kscreen-doctor", "-j");
+            if (!string.IsNullOrEmpty(test) && test.Contains("\"outputs\""))
             {
-                string test = RunCmd("kscreen-doctor", "-j");
-                _hasKscreenDoctor = !string.IsNullOrEmpty(test) && test.Contains("\"outputs\"");
+                _hasKscreenDoctor = true;
                 _toolsChecked = true;
-                if (_hasKscreenDoctor)
-                {
-                    Logger.Log("DISPLAY", "Using kscreen-doctor for display management", ConsoleColor.Green);
-                }
-                else
-                {
-                    Logger.Log("DISPLAY", "kscreen-doctor unavailable or failing, using xrandr", ConsoleColor.DarkYellow);
-                }
+                Logger.Log("DISPLAY", "Using kscreen-doctor for display management", ConsoleColor.Green);
             }
-            catch
+            else if (_hasKscreenDoctor)
             {
                 _hasKscreenDoctor = false;
-                _toolsChecked = true;
+                Logger.Log("DISPLAY", "kscreen-doctor unavailable or failing, using xrandr (will retry)", ConsoleColor.DarkYellow);
             }
         }
 
         private static string RunCmd(string cmd, string args)
         {
+            Program.RefreshLinuxSessionEnvironment();
             if (cmd == "kscreen-doctor" && !IsDisplayAvailable())
             {
                 return "";

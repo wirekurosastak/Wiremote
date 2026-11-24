@@ -12,7 +12,7 @@ namespace Wiremote
         {
             if (OperatingSystem.IsLinux())
             {
-                InitLinuxEnvironment();
+                RefreshLinuxSessionEnvironment();
             }
 
             if (OperatingSystem.IsWindows())
@@ -166,7 +166,10 @@ namespace Wiremote
             catch { }
         }
 
-        static void InitLinuxEnvironment()
+        // Safe to call repeatedly. With systemd linger the service starts at boot, before the
+        // graphical session exists, so the Wayland socket and xauth file only appear later
+        // (and can change on every re-login). Callers refresh before spawning GUI tools.
+        internal static void RefreshLinuxSessionEnvironment()
         {
             try
             {
@@ -174,12 +177,17 @@ namespace Wiremote
                 string runtimeDir = Environment.GetEnvironmentVariable("XDG_RUNTIME_DIR") ?? $"/run/user/{uid}";
                 SetEnvBoth("XDG_RUNTIME_DIR", runtimeDir);
 
-                if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WAYLAND_DISPLAY")))
+                string? wd = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
+                if (string.IsNullOrEmpty(wd) || !File.Exists(Path.Combine(runtimeDir, wd)))
                 {
-                    if (File.Exists(Path.Combine(runtimeDir, "wayland-0")))
-                        SetEnvBoth("WAYLAND_DISPLAY", "wayland-0");
-                    else if (File.Exists(Path.Combine(runtimeDir, "wayland-1")))
-                        SetEnvBoth("WAYLAND_DISPLAY", "wayland-1");
+                    string? socket = Directory.Exists(runtimeDir)
+                        ? Directory.GetFiles(runtimeDir, "wayland-*")
+                            .Select(Path.GetFileName)
+                            .Where(f => f != null && !f.EndsWith(".lock"))
+                            .OrderBy(f => f, StringComparer.Ordinal)
+                            .FirstOrDefault()
+                        : null;
+                    if (socket != null) SetEnvBoth("WAYLAND_DISPLAY", socket);
                 }
 
                 if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("DISPLAY")))

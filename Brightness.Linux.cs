@@ -34,6 +34,7 @@ namespace Wiremote
 
         private static string RunCmd(string cmd, string args)
         {
+            Program.RefreshLinuxSessionEnvironment();
             if (cmd == "kscreen-doctor" && !DisplayManager.IsDisplayAvailable())
             {
                 return "";

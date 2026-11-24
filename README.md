@@ -10,10 +10,23 @@ A fast, pragmatic, and lightweight PC remote-control web UI for Windows and Linu
 - **Input & Keyboard**: Acts as a remote touchpad and keyboard. Includes left/right mouse clicks and full scrolling support (via Windows SendInput or Linux XTest / XWayland).
 - **Power**: Remotely shutdown, restart, sleep, or hibernate the PC. Supports delayed timers and cancellations (via systemctl on Linux or shutdown.exe on Windows).
 
+## Phone App (Flutter)
+
+The `app/` folder holds a native Flutter app for Android and iOS. It has the same features and look as the web UI, and talks to the same server over the same WebSocket protocol, so the server needs no changes.
+
+- **Pairing**: on first launch, paste the link the server prints (`http://<ip>:8765/?token=<TOKEN>`), or type the PC's IP address and token.
+- **Connection**: connects while the app is on screen, drops the socket when it goes to the background, and reconnects instantly when it comes back.
+- **Build for Android**: `cd app && flutter build apk --release`, then install `app/build/app/outputs/flutter-apk/app-release.apk`. Add `--split-per-abi` for smaller per-device APKs.
+- **iOS**: build from macOS with Xcode (`flutter build ios`).
+- **Tests**: `cd app && flutter test`.
+
+The web UI is still served on port 8765, so a browser keeps working without the app.
+
 ## Architecture
 
 This tool was designed with a "KISS" (Keep It Simple, Stupid) philosophy in mind:
-- **Zero-Dependency Frontend**: The UI is built with vanilla JavaScript, HTML, and CSS. No Node.js, no Webpack, no React. Fast to load, easy to read.
+- **Zero-Dependency Web Frontend**: The web UI is built with vanilla JavaScript, HTML, and CSS. No Node.js, no Webpack, no React. Fast to load, easy to read.
+- **Native Phone App**: The Flutter app in `app/` uses only two plugins (settings storage and keep-screen-awake).
 - **Embedded Static Assets**: All frontend files are embedded into the C# binary. The application compiles to a single executable.
 - **Direct OS Integration**: Pragmatic platform implementations for Windows and Linux without heavy third-party framework overhead.
 

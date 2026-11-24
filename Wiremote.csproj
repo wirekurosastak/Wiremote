@@ -11,6 +11,8 @@
     <NoWarn>$(NoWarn);CS1591</NoWarn>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
+    <!-- The Flutter phone app lives in app/; keep it out of the server build. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);app/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
